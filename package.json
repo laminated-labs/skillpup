@@ -4,7 +4,12 @@
   "description": "CLI for storing and fetching agent skills from a private git-backed registry.",
   "main": "dist/cli.js",
   "repository": {
-    "type": "git"
+    "type": "git",
+    "url": "git+https://github.com/laminated-labs/skillpup.git"
+  },
+  "homepage": "https://github.com/laminated-labs/skillpup#readme",
+  "bugs": {
+    "url": "https://github.com/laminated-labs/skillpup/issues"
   },
   "scripts": {
     "build": "tsup",
@@ -22,6 +27,10 @@
   "packageManager": "pnpm@10.30.3",
   "bin": {
     "skillpup": "./dist/cli.js"
+  },
+  "publishConfig": {
+    "registry": "https://registry.npmjs.org",
+    "access": "public"
   },
   "files": [
     "dist"
