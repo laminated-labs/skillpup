@@ -1,5 +1,7 @@
 # skillpup
 
+![skillpup logo](./skillpup_logo.png)
+
 `skillpup` is a CLI for publishing agent skills into a private git-backed registry and fetching them into consuming repositories with a config file, lockfile, and integrity checks.
 
 Inspired by our great friends at [Ambush Capital](https://www.ambush.capital) and their project [docpup](https://github.com/Ambush-Capital/docpup).
