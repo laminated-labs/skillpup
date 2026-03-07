@@ -1,7 +1,7 @@
 {
   "name": "skillpup",
   "version": "0.1.0",
-  "description": "CLI for burying and fetching agent skills from a private git-backed registry.",
+  "description": "CLI for storing and fetching agent skills from a private git-backed registry.",
   "main": "dist/cli.js",
   "repository": {
     "type": "git"
@@ -14,7 +14,7 @@
   },
   "keywords": [],
   "author": "",
-  "license": "MIT",
+  "license": "Apache-2.0",
   "type": "module",
   "engines": {
     "node": ">=24"
