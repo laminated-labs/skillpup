@@ -1,6 +1,6 @@
 # skillpup
 
-![skillpup logo](./skillpup_logo.png)
+<img src="./skillpup_logo.png" alt="skillpup logo" width="240" />
 
 `skillpup` is a CLI for publishing agent skills into a private git-backed registry and fetching them into consuming repositories with a config file, lockfile, and integrity checks.
 
