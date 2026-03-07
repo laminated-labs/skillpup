@@ -57,7 +57,6 @@ describe("skillpup integration", () => {
 
       let result = await runCli(rootDir, [
         "bury",
-        "add",
         source.repoDir,
         "--ref",
         "v1.2.0",
@@ -70,7 +69,6 @@ describe("skillpup integration", () => {
 
       result = await runCli(rootDir, [
         "bury",
-        "add",
         source.repoDir,
         "--registry",
         registryDir,
@@ -122,7 +120,6 @@ describe("skillpup integration", () => {
 
       const result = await runCli(rootDir, [
         "bury",
-        "add",
         source.repoDir,
         "--path",
         "skills/reviewer",
@@ -156,7 +153,6 @@ describe("skillpup integration", () => {
       });
       await runCli(rootDir, [
         "bury",
-        "add",
         source.repoDir,
         "--registry",
         registryDir,
@@ -193,7 +189,6 @@ describe("skillpup integration", () => {
       });
       await runCli(rootDir, [
         "bury",
-        "add",
         source.repoDir,
         "--registry",
         registryDir,
@@ -232,7 +227,7 @@ describe("skillpup integration", () => {
   );
 
   it(
-    "commits registry files on bury add --commit",
+    "commits registry files on bury --commit",
     async () => {
       const registryDir = path.join(rootDir, "registry-bury-commit");
       await runCli(rootDir, ["bury", "init", registryDir]);
@@ -247,7 +242,6 @@ describe("skillpup integration", () => {
 
       const result = await runCli(rootDir, [
         "bury",
-        "add",
         source.repoDir,
         "--registry",
         registryDir,
@@ -274,7 +268,6 @@ describe("skillpup integration", () => {
       });
       await runCli(rootDir, [
         "bury",
-        "add",
         source.repoDir,
         "--registry",
         registryDir,
@@ -312,7 +305,6 @@ describe("skillpup integration", () => {
       });
       await runCli(rootDir, [
         "bury",
-        "add",
         source.repoDir,
         "--registry",
         registryDir,
@@ -359,7 +351,6 @@ describe("skillpup integration", () => {
       });
       await runCli(rootDir, [
         "bury",
-        "add",
         source.repoDir,
         "--registry",
         registryDir,

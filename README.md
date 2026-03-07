@@ -2,14 +2,14 @@
 
 `skillpup` is a CLI for publishing agent skills into a private git-backed registry and fetching them into consuming repositories with a config file, lockfile, and integrity checks.
 
-Inspired by our great friends at Ambush Capital and their project [docpup](https://github.com/Ambush-Capital/docpup).
+Inspired by our great friends at [Ambush Capital](https://www.ambush.capital) and their project [docpup](https://github.com/Ambush-Capital/docpup).
 
 ## What It Does
 
 `skillpup` gives you a simple workflow for managing reusable agent skills across repositories:
 
 - initialize a registry repository with `skillpup bury init`
-- publish versioned skill bundles into that registry with `skillpup bury add`
+- publish versioned skill bundles into that registry with `skillpup bury`
 - fetch those skills into a consumer repository with `skillpup fetch`
 - record the chosen versions in `skillpup.config.yaml`
 - pin fetched contents and source metadata in `skillpup.lock.yaml`
@@ -72,10 +72,10 @@ This creates the registry scaffold, including:
 Assume you have a git repository at `../reviewer-skill` whose skill root contains `SKILL.md`.
 
 ```bash
-skillpup bury add ../reviewer-skill --registry ../skill-registry --commit
+skillpup bury ../reviewer-skill --registry ../skill-registry --commit
 ```
 
-By default, `skillpup bury add`:
+By default, `skillpup bury`:
 
 - clones the source repository before reading from it
 - uses the highest semver-like tag as the stored version when available
@@ -85,7 +85,7 @@ By default, `skillpup bury add`:
 If the skill lives in a nested directory, point at it explicitly:
 
 ```bash
-skillpup bury add ../team-skills \
+skillpup bury ../team-skills \
   --path skills/reviewer \
   --registry ../skill-registry \
   --commit
@@ -118,7 +118,7 @@ If the config lives in a parent directory, `skillpup` will discover it when run 
 
 ### Registry Repository
 
-The registry is a git repository that stores versioned skill bundles and metadata. `skillpup bury init` creates the expected registry marker file, and `skillpup bury add` writes new bundle versions into the registry.
+The registry is a git repository that stores versioned skill bundles and metadata. `skillpup bury init` creates the expected registry marker file, and `skillpup bury` writes new bundle versions into the registry.
 
 ### Skill Bundle
 
@@ -227,7 +227,7 @@ Behavior:
 
 Initializes a directory as a registry repository. If no directory is provided, the current working directory is used.
 
-### `skillpup bury add <source-git-url>`
+### `skillpup bury <source-git-url>`
 
 Publishes a skill from a git repository into a local registry.
 
@@ -259,7 +259,7 @@ Behavior:
 Commit behavior:
 
 - `skillpup fetch --commit` commits only `skillpup.config.yaml` and `skillpup.lock.yaml`
-- `skillpup bury add --commit` commits the registry files for the newly buried version
+- `skillpup bury --commit` commits the registry files for the newly buried version
 - both commit modes refuse to proceed when unrelated staged changes are present
 
 ## Troubleshooting
@@ -274,12 +274,12 @@ skillpup fetch reviewer --registry ../skill-registry
 
 ### `Selected skill directory does not contain SKILL.md`
 
-The directory you publish with `bury add` must contain a `SKILL.md` at its root. Use `--path` if the skill is nested inside a larger repository.
+The directory you publish with `bury` must contain a `SKILL.md` at its root. Use `--path` if the skill is nested inside a larger repository.
 
 ### Skill version resolution is not what you expected
 
 - use `name@version` with `fetch` to force an exact version
-- use `--version` with `bury add` to record a specific version explicitly
+- use `--version` with `bury` to record a specific version explicitly
 - when versions are omitted, semver-like versions take precedence
 
 ### Running from a nested directory
@@ -309,6 +309,6 @@ just test
 - skill names may contain letters, numbers, `.`, `_`, and `-`
 - registry installs are git-backed and suited to private team workflows
 - `fetch` can read from a local registry path or a git URL
-- `bury add --registry` currently expects a local registry path
+- `bury --registry` currently expects a local registry path
 
 Built with love by [Laminated Labs](https://laminatedlabs.com).

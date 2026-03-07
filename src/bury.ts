@@ -54,7 +54,7 @@ export async function buryInit(options?: { directory?: string; cwd?: string }) {
   };
 }
 
-export async function buryAdd(options: {
+export async function burySkill(options: {
   sourceGitUrl: string;
   registry?: string;
   path?: string;
