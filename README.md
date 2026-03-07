@@ -190,6 +190,8 @@ Fetched skill files are installed into `.agents/skills` by default:
 
 If `skillsDir` is omitted, `skillpup` reuses an existing supported skills directory when it finds one and otherwise falls back to `.agents/skills`. `skillpup fetch --registry ...` writes the resolved path into the generated config.
 
+When running inside a git repository, `skillpup fetch` also ensures the effective skills directory is ignored by the repo `.gitignore`. If any repo `.gitignore` already covers that path, no new rule is added.
+
 ## Configuration Reference
 
 | Option | Type | Default | Description |
@@ -225,6 +227,7 @@ Behavior:
 
 - bootstraps config if no config file exists and `--registry` is provided
 - writes the resolved `skillsDir` into bootstrapped config files
+- ensures the effective `skillsDir` is ignored in the git-root `.gitignore` when needed
 - rewrites the installed skill directory from registry contents on each fetch
 - removes skills that are no longer declared in config
 - verifies installed contents against the registry digest before completing

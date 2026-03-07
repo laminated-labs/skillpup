@@ -141,6 +141,36 @@ describe("skillpup integration", () => {
   );
 
   it(
+    "adds the effective skillsDir to the repo .gitignore on fetch",
+    async () => {
+      const registryDir = path.join(rootDir, "registry-gitignore-bootstrap");
+      await runCli(rootDir, ["bury", "init", registryDir]);
+      await initTestRepo(registryDir);
+
+      const source = await createSkillRepo({
+        skillName: "reviewer",
+        versions: ["v1.0.0"],
+      });
+      await runCli(rootDir, ["bury", source.repoDir, "--registry", registryDir]);
+
+      const consumerDir = path.join(rootDir, "consumer-gitignore-bootstrap");
+      await initTestRepo(consumerDir);
+
+      const result = await runCli(consumerDir, [
+        "fetch",
+        "reviewer",
+        "--registry",
+        registryDir,
+      ]);
+      expect(result.exitCode).toBe(0);
+      expect(await fs.readFile(path.join(consumerDir, ".gitignore"), "utf8")).toBe(
+        "/.agents/skills/\n"
+      );
+    },
+    TEST_TIMEOUT
+  );
+
+  it(
     "reconstructs the install directory on repeated fetches",
     async () => {
       const registryDir = path.join(rootDir, "registry-reconstruct");
@@ -172,6 +202,50 @@ describe("skillpup integration", () => {
       expect(
         await fileExists(path.join(consumerDir, ".agents/skills/formatter/SKILL.md"))
       ).toBe(true);
+    },
+    TEST_TIMEOUT
+  );
+
+  it(
+    "commits .gitignore on fetch --commit when skillpup adds the ignore rule",
+    async () => {
+      const registryDir = path.join(rootDir, "registry-fetch-commit-gitignore");
+      await runCli(rootDir, ["bury", "init", registryDir]);
+      await initTestRepo(registryDir);
+
+      const source = await createSkillRepo({
+        skillName: "writer",
+        versions: ["v1.0.0"],
+      });
+      await runCli(rootDir, [
+        "bury",
+        source.repoDir,
+        "--registry",
+        registryDir,
+      ]);
+
+      const consumerDir = path.join(rootDir, "consumer-fetch-commit-gitignore");
+      await initTestRepo(consumerDir);
+      await fs.writeFile(path.join(consumerDir, "README.md"), "# consumer\n", "utf8");
+      await commitAll(consumerDir, "initial");
+
+      const result = await runCli(consumerDir, [
+        "fetch",
+        "writer",
+        "--registry",
+        registryDir,
+        "--commit",
+      ]);
+      expect(result.exitCode).toBe(0);
+
+      const files = await runGitCapture(
+        ["show", "--name-only", "--pretty=format:", "HEAD"],
+        consumerDir
+      );
+
+      expect(files.split("\n").filter(Boolean).sort()).toEqual(
+        [".gitignore", "skillpup.config.yaml", "skillpup.lock.yaml"].sort()
+      );
     },
     TEST_TIMEOUT
   );
@@ -255,6 +329,9 @@ describe("skillpup integration", () => {
         path.join(consumerDir, "skillpup.config.yaml")
       );
       expect(config.skillsDir).toBe(".agent/skills");
+      expect(await fs.readFile(path.join(consumerDir, ".gitignore"), "utf8")).toBe(
+        "/.agent/skills/\n"
+      );
       expect(
         await fileExists(path.join(consumerDir, ".agent/skills/reviewer/SKILL.md"))
       ).toBe(true);
@@ -338,6 +415,138 @@ describe("skillpup integration", () => {
   );
 
   it(
+    "writes repo-root gitignore entries relative to nested consumer configs",
+    async () => {
+      const registryDir = path.join(rootDir, "registry-nested-gitignore");
+      await runCli(rootDir, ["bury", "init", registryDir]);
+      await initTestRepo(registryDir);
+
+      const source = await createSkillRepo({
+        skillName: "reviewer",
+        versions: ["v1.0.0"],
+      });
+      await runCli(rootDir, ["bury", source.repoDir, "--registry", registryDir]);
+
+      const consumerDir = path.join(rootDir, "consumer-nested-gitignore");
+      await initTestRepo(consumerDir);
+      const packageDir = path.join(consumerDir, "packages", "app");
+      await fs.mkdir(packageDir, { recursive: true });
+
+      const result = await runCli(packageDir, [
+        "fetch",
+        "reviewer",
+        "--registry",
+        registryDir,
+      ]);
+      expect(result.exitCode).toBe(0);
+      expect(await fs.readFile(path.join(consumerDir, ".gitignore"), "utf8")).toBe(
+        "/packages/app/.agents/skills/\n"
+      );
+    },
+    TEST_TIMEOUT
+  );
+
+  it(
+    "does not duplicate the root .gitignore when a broader repo rule already ignores the skills dir",
+    async () => {
+      const registryDir = path.join(rootDir, "registry-broader-ignore");
+      await runCli(rootDir, ["bury", "init", registryDir]);
+      await initTestRepo(registryDir);
+
+      const source = await createSkillRepo({
+        skillName: "reviewer",
+        versions: ["v1.0.0"],
+      });
+      await runCli(rootDir, ["bury", source.repoDir, "--registry", registryDir]);
+
+      const consumerDir = path.join(rootDir, "consumer-broader-ignore");
+      await initTestRepo(consumerDir);
+      await fs.writeFile(path.join(consumerDir, ".gitignore"), "/.agents/\n", "utf8");
+
+      const result = await runCli(consumerDir, [
+        "fetch",
+        "reviewer",
+        "--registry",
+        registryDir,
+      ]);
+      expect(result.exitCode).toBe(0);
+      expect(await fs.readFile(path.join(consumerDir, ".gitignore"), "utf8")).toBe(
+        "/.agents/\n"
+      );
+    },
+    TEST_TIMEOUT
+  );
+
+  it(
+    "skips writing the repo root .gitignore when a nested repo .gitignore already ignores the skills dir",
+    async () => {
+      const registryDir = path.join(rootDir, "registry-nested-ignore");
+      await runCli(rootDir, ["bury", "init", registryDir]);
+      await initTestRepo(registryDir);
+
+      const source = await createSkillRepo({
+        skillName: "reviewer",
+        versions: ["v1.0.0"],
+      });
+      await runCli(rootDir, ["bury", source.repoDir, "--registry", registryDir]);
+
+      const consumerDir = path.join(rootDir, "consumer-nested-ignore");
+      await initTestRepo(consumerDir);
+      const packageDir = path.join(consumerDir, "packages", "app");
+      await fs.mkdir(packageDir, { recursive: true });
+      await fs.writeFile(path.join(packageDir, ".gitignore"), ".agents/\n", "utf8");
+
+      const result = await runCli(packageDir, [
+        "fetch",
+        "reviewer",
+        "--registry",
+        registryDir,
+      ]);
+      expect(result.exitCode).toBe(0);
+      expect(await fileExists(path.join(consumerDir, ".gitignore"))).toBe(false);
+      expect(await fs.readFile(path.join(packageDir, ".gitignore"), "utf8")).toBe(
+        ".agents/\n"
+      );
+    },
+    TEST_TIMEOUT
+  );
+
+  it(
+    "adds a repo .gitignore entry when only .git/info/exclude ignores the skills dir",
+    async () => {
+      const registryDir = path.join(rootDir, "registry-info-exclude");
+      await runCli(rootDir, ["bury", "init", registryDir]);
+      await initTestRepo(registryDir);
+
+      const source = await createSkillRepo({
+        skillName: "reviewer",
+        versions: ["v1.0.0"],
+      });
+      await runCli(rootDir, ["bury", source.repoDir, "--registry", registryDir]);
+
+      const consumerDir = path.join(rootDir, "consumer-info-exclude");
+      await initTestRepo(consumerDir);
+      await fs.writeFile(
+        path.join(consumerDir, ".git", "info", "exclude"),
+        ".agents/\n",
+        "utf8"
+      );
+
+      const result = await runCli(consumerDir, [
+        "fetch",
+        "reviewer",
+        "--registry",
+        registryDir,
+      ]);
+      expect(result.exitCode).toBe(0);
+      expect(await fs.readFile(path.join(consumerDir, ".gitignore"), "utf8")).toBe(
+        "/.agents/skills/\n"
+      );
+    },
+    TEST_TIMEOUT
+  );
+
+  it(
     "keeps an explicit skillsDir even when repo markers suggest a different default",
     async () => {
       const registryDir = path.join(rootDir, "registry-explicit-skills-dir");
@@ -372,6 +581,9 @@ skills:
         path.join(consumerDir, "skillpup.config.yaml")
       );
       expect(config.skillsDir).toBe(".agent/skills");
+      expect(await fs.readFile(path.join(consumerDir, ".gitignore"), "utf8")).toBe(
+        "/.agent/skills/\n"
+      );
       expect(
         await fileExists(path.join(consumerDir, ".agent/skills/reviewer/SKILL.md"))
       ).toBe(true);

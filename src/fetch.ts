@@ -15,6 +15,7 @@ import {
   toGitRelativePath,
 } from "./git.js";
 import { openRegistryForRead } from "./git-bundle-backend.js";
+import { ensureDirectoryIgnoredInRepo } from "./gitignore.js";
 import { resolveSkillsDir } from "./skills-dir.js";
 import {
   LOCKFILE_BASENAME,
@@ -184,13 +185,17 @@ export async function fetchSkills(options: {
 
     await writeProjectConfig(configPath, config);
     await writeLockfile(lockfilePath, lockfile);
+    const gitignoreUpdate = await ensureDirectoryIgnoredInRepo(skillsDir, configDir);
 
     if (options.commit) {
-      const gitRoot = await getGitRoot(cwd);
+      const gitRoot = await getGitRoot(configDir);
       const allowedPaths = [
         await toGitRelativePath(gitRoot, configPath),
         await toGitRelativePath(gitRoot, lockfilePath),
       ];
+      if (gitignoreUpdate.gitignorePath && gitignoreUpdate.changed) {
+        allowedPaths.push(await toGitRelativePath(gitRoot, gitignoreUpdate.gitignorePath));
+      }
       await ensureNoUnrelatedStagedChanges(gitRoot, allowedPaths);
       await stagePaths(gitRoot, allowedPaths);
       await commitChanges(

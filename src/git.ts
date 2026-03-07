@@ -93,6 +93,30 @@ export async function getGitRoot(cwd: string) {
   return runGitCapture(["rev-parse", "--show-toplevel"], cwd);
 }
 
+export async function getGitCheckIgnoreVerboseLines(cwd: string, paths: string[]) {
+  if (paths.length === 0) {
+    return [];
+  }
+
+  const result = await execa("git", ["check-ignore", "--verbose", "--stdin"], {
+    cwd,
+    env: gitEnv,
+    input: `${paths.join("\n")}\n`,
+    reject: false,
+    stdin: "pipe",
+  });
+
+  if (result.exitCode !== 0 && result.exitCode !== 1) {
+    const message = result.stderr.trim() || result.stdout.trim();
+    throw new Error(message || "git check-ignore failed");
+  }
+
+  return result.stdout
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
+}
+
 export async function getStagedPaths(cwd: string) {
   const output = await runGitCapture(["diff", "--cached", "--name-only"], cwd);
   return output
