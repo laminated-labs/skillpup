@@ -345,4 +345,46 @@ describe("skillpup integration", () => {
     },
     TEST_TIMEOUT
   );
+
+  it(
+    "fails on digest mismatch when bundled file permissions change after locking",
+    async () => {
+      const registryDir = path.join(rootDir, "registry-digest-mode");
+      await runCli(rootDir, ["bury", "init", registryDir]);
+      await initTestRepo(registryDir);
+
+      const source = await createSkillRepo({
+        skillName: "warden",
+        versions: ["v1.0.0"],
+      });
+      await runCli(rootDir, [
+        "bury",
+        "add",
+        source.repoDir,
+        "--registry",
+        registryDir,
+      ]);
+
+      const consumerDir = path.join(rootDir, "consumer-digest-mode");
+      await initTestRepo(consumerDir);
+      let result = await runCli(consumerDir, [
+        "fetch",
+        "warden",
+        "--registry",
+        registryDir,
+      ]);
+      expect(result.exitCode).toBe(0);
+
+      const bundledFilePath = path.join(
+        registryDir,
+        "skills/warden/versions/v1.0.0/skill/template.txt"
+      );
+      await fs.chmod(bundledFilePath, 0o600);
+
+      result = await runCli(consumerDir, ["fetch"]);
+      expect(result.exitCode).toBe(1);
+      expect(result.stderr).toMatch(/digest mismatch/i);
+    },
+    TEST_TIMEOUT
+  );
 });

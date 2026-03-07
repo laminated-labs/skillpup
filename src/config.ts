@@ -26,21 +26,50 @@ export type LoadedProjectConfig = {
   config: SkillpupConfig;
 };
 
+const CONFIG_SEARCH_PLACES = [
+  "skillpup.config.yaml",
+  "skillpup.config.yml",
+  ".skillpuprc",
+  ".skillpuprc.json",
+  ".skillpuprc.yaml",
+  ".skillpuprc.yml",
+] as const;
+
 const explorer = cosmiconfig("skillpup", {
-  searchPlaces: [
-    "skillpup.config.yaml",
-    "skillpup.config.yml",
-    ".skillpuprc",
-    ".skillpuprc.json",
-    ".skillpuprc.yaml",
-    ".skillpuprc.yml",
-  ],
+  searchPlaces: [...CONFIG_SEARCH_PLACES],
 });
+
+async function findConfigPath(baseDir: string): Promise<string | null> {
+  let currentDir = path.resolve(baseDir);
+
+  for (;;) {
+    for (const searchPlace of CONFIG_SEARCH_PLACES) {
+      const candidatePath = path.join(currentDir, searchPlace);
+      try {
+        await fs.access(candidatePath);
+        return candidatePath;
+      } catch {
+        continue;
+      }
+    }
+
+    const parentDir = path.dirname(currentDir);
+    if (parentDir === currentDir) {
+      return null;
+    }
+    currentDir = parentDir;
+  }
+}
 
 export async function loadProjectConfig(
   baseDir: string = process.cwd()
 ): Promise<LoadedProjectConfig | null> {
-  const result = await explorer.search(baseDir);
+  const configPath = await findConfigPath(baseDir);
+  if (!configPath) {
+    return null;
+  }
+
+  const result = await explorer.load(configPath);
   if (!result || result.isEmpty) {
     return null;
   }

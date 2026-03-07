@@ -4,8 +4,12 @@ import path from "node:path";
 import { resolveInside, toPosix } from "./utils.js";
 
 type TreeEntry =
-  | { kind: "dir"; relativePath: string; absolutePath: string }
-  | { kind: "file"; relativePath: string; absolutePath: string };
+  | { kind: "dir"; relativePath: string; absolutePath: string; mode: number }
+  | { kind: "file"; relativePath: string; absolutePath: string; mode: number };
+
+function normalizeMode(mode: number) {
+  return mode & 0o7777;
+}
 
 export async function pathExists(targetPath: string) {
   try {
@@ -52,14 +56,17 @@ async function collectTree(rootDir: string): Promise<TreeEntry[]> {
         throw new Error(`Symlinked content is not supported: ${relativePath}`);
       }
 
+      const entryStats = await fs.stat(absolutePath);
+      const mode = normalizeMode(entryStats.mode);
+
       if (entry.isDirectory()) {
-        entries.push({ kind: "dir", relativePath, absolutePath });
+        entries.push({ kind: "dir", relativePath, absolutePath, mode });
         await walk(relativePath);
         continue;
       }
 
       if (entry.isFile()) {
-        entries.push({ kind: "file", relativePath, absolutePath });
+        entries.push({ kind: "file", relativePath, absolutePath, mode });
         continue;
       }
 
@@ -74,18 +81,24 @@ async function collectTree(rootDir: string): Promise<TreeEntry[]> {
 export async function copyDirectoryStrict(sourceDir: string, destinationDir: string) {
   const entries = await collectTree(sourceDir);
   await ensureDir(destinationDir);
+  const directoriesToChmod: TreeEntry[] = [];
 
   for (const entry of entries) {
     const destinationPath = resolveInside(destinationDir, entry.relativePath);
     if (entry.kind === "dir") {
       await ensureDir(destinationPath);
+      directoriesToChmod.push(entry);
       continue;
     }
 
     await ensureDir(path.dirname(destinationPath));
     await fs.copyFile(entry.absolutePath, destinationPath);
-    const sourceStats = await fs.stat(entry.absolutePath);
-    await fs.chmod(destinationPath, sourceStats.mode);
+    await fs.chmod(destinationPath, entry.mode);
+  }
+
+  for (const entry of [...directoriesToChmod].reverse()) {
+    const destinationPath = resolveInside(destinationDir, entry.relativePath);
+    await fs.chmod(destinationPath, entry.mode);
   }
 }
 
@@ -96,11 +109,11 @@ export async function computeDirectoryDigest(rootDir: string) {
   for (const entry of entries) {
     const relativePath = toPosix(entry.relativePath);
     if (entry.kind === "dir") {
-      hash.update(`dir:${relativePath}\0`);
+      hash.update(`dir:${relativePath}:${entry.mode.toString(8)}\0`);
       continue;
     }
 
-    hash.update(`file:${relativePath}\0`);
+    hash.update(`file:${relativePath}:${entry.mode.toString(8)}\0`);
     const fileContents = await fs.readFile(entry.absolutePath);
     hash.update(fileContents);
     hash.update("\0");

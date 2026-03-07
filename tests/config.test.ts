@@ -40,4 +40,26 @@ skills:
     const loaded = await loadProjectConfig(tempDir);
     expect(loaded).toBeNull();
   });
+
+  it("searches parent directories for config files", async () => {
+    const tempDir = await makeTempDir("skillpup-config-parent-");
+    tempDirs.push(tempDir);
+    await fs.writeFile(
+      path.join(tempDir, "skillpup.config.yaml"),
+      `registry:
+  type: git
+  url: /tmp/registry
+skills:
+  - name: reviewer
+`,
+      "utf8"
+    );
+
+    const nestedDir = path.join(tempDir, "packages", "app");
+    await fs.mkdir(nestedDir, { recursive: true });
+
+    const loaded = await loadProjectConfig(nestedDir);
+    expect(loaded?.path).toBe(path.join(tempDir, "skillpup.config.yaml"));
+    expect(loaded?.config.skills[0]?.name).toBe("reviewer");
+  });
 });
