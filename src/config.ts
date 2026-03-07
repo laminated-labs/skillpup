@@ -3,7 +3,8 @@ import path from "node:path";
 import { cosmiconfig } from "cosmiconfig";
 import { z } from "zod";
 import type { SkillpupConfig } from "./types.js";
-import { CONFIG_FILE_BASENAME, DEFAULT_SKILLS_DIR } from "./utils.js";
+import { resolveSkillsDir } from "./skills-dir.js";
+import { CONFIG_FILE_BASENAME } from "./utils.js";
 
 const registrySchema = z.object({
   type: z.literal("git").default("git"),
@@ -17,7 +18,7 @@ const skillEntrySchema = z.object({
 
 const configSchema = z.object({
   registry: registrySchema,
-  skillsDir: z.string().min(1).default(DEFAULT_SKILLS_DIR),
+  skillsDir: z.string().min(1).optional(),
   skills: z.array(skillEntrySchema).default([]),
 });
 
@@ -79,9 +80,17 @@ export async function loadProjectConfig(
     throw new Error(`Invalid config: ${parsed.error.message}`);
   }
 
+  const configDir = path.dirname(result.filepath);
+  const skillsDir =
+    parsed.data.skillsDir ?? (await resolveSkillsDir(configDir));
+
   return {
     path: result.filepath,
-    config: parsed.data,
+    config: {
+      registry: parsed.data.registry,
+      skillsDir,
+      skills: parsed.data.skills,
+    },
   };
 }
 

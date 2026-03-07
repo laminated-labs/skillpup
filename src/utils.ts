@@ -1,7 +1,7 @@
 import path from "node:path";
 import semver from "semver";
 
-export const DEFAULT_SKILLS_DIR = ".agent/skills";
+export const DEFAULT_SKILLS_DIR = ".agents/skills";
 export const CONFIG_FILE_BASENAME = "skillpup.config.yaml";
 export const LOCKFILE_BASENAME = "skillpup.lock.yaml";
 export const REGISTRY_FILE_BASENAME = "skillpup-registry.yaml";

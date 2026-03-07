@@ -99,7 +99,7 @@ describe("skillpup integration", () => {
       });
       expect(lockfile.skills[0]?.version).toBe("v1.10.0");
       expect(
-        await fileExists(path.join(consumerDir, ".agent/skills/reviewer/SKILL.md"))
+        await fileExists(path.join(consumerDir, ".agents/skills/reviewer/SKILL.md"))
       ).toBe(true);
     },
     TEST_TIMEOUT
@@ -162,7 +162,7 @@ describe("skillpup integration", () => {
       await initTestRepo(consumerDir);
       await runCli(consumerDir, ["fetch", "formatter", "--registry", registryDir]);
 
-      await fs.rm(path.join(consumerDir, ".agent/skills"), {
+      await fs.rm(path.join(consumerDir, ".agents/skills"), {
         recursive: true,
         force: true,
       });
@@ -170,7 +170,7 @@ describe("skillpup integration", () => {
 
       expect(result.exitCode).toBe(0);
       expect(
-        await fileExists(path.join(consumerDir, ".agent/skills/formatter/SKILL.md"))
+        await fileExists(path.join(consumerDir, ".agents/skills/formatter/SKILL.md"))
       ).toBe(true);
     },
     TEST_TIMEOUT
@@ -196,7 +196,7 @@ describe("skillpup integration", () => {
 
       const consumerDir = path.join(rootDir, "consumer-fetch-commit");
       await initTestRepo(consumerDir);
-      await fs.writeFile(path.join(consumerDir, ".gitignore"), ".agent/\n", "utf8");
+      await fs.writeFile(path.join(consumerDir, ".gitignore"), ".agents/\n", "utf8");
       await commitAll(consumerDir, "initial");
 
       const result = await runCli(consumerDir, [
@@ -220,8 +220,245 @@ describe("skillpup integration", () => {
         "skillpup.lock.yaml",
       ]);
       expect(
-        await fileExists(path.join(consumerDir, ".agent/skills/writer/SKILL.md"))
+        await fileExists(path.join(consumerDir, ".agents/skills/writer/SKILL.md"))
       ).toBe(true);
+    },
+    TEST_TIMEOUT
+  );
+
+  it(
+    "preserves a legacy .agent/skills directory when bootstrapping a consumer repo",
+    async () => {
+      const registryDir = path.join(rootDir, "registry-legacy-dir");
+      await runCli(rootDir, ["bury", "init", registryDir]);
+      await initTestRepo(registryDir);
+
+      const source = await createSkillRepo({
+        skillName: "reviewer",
+        versions: ["v1.0.0"],
+      });
+      await runCli(rootDir, ["bury", source.repoDir, "--registry", registryDir]);
+
+      const consumerDir = path.join(rootDir, "consumer-legacy-dir");
+      await initTestRepo(consumerDir);
+      await fs.mkdir(path.join(consumerDir, ".agent/skills"), { recursive: true });
+
+      const result = await runCli(consumerDir, [
+        "fetch",
+        "reviewer",
+        "--registry",
+        registryDir,
+      ]);
+      expect(result.exitCode).toBe(0);
+
+      const config = await readYamlFile<SkillpupConfig>(
+        path.join(consumerDir, "skillpup.config.yaml")
+      );
+      expect(config.skillsDir).toBe(".agent/skills");
+      expect(
+        await fileExists(path.join(consumerDir, ".agent/skills/reviewer/SKILL.md"))
+      ).toBe(true);
+      expect(
+        await fileExists(path.join(consumerDir, ".agents/skills/reviewer/SKILL.md"))
+      ).toBe(false);
+    },
+    TEST_TIMEOUT
+  );
+
+  it(
+    "reuses an existing .opencode/skills directory when bootstrapping a consumer repo",
+    async () => {
+      const registryDir = path.join(rootDir, "registry-opencode-dir");
+      await runCli(rootDir, ["bury", "init", registryDir]);
+      await initTestRepo(registryDir);
+
+      const source = await createSkillRepo({
+        skillName: "reviewer",
+        versions: ["v1.0.0"],
+      });
+      await runCli(rootDir, ["bury", source.repoDir, "--registry", registryDir]);
+
+      const consumerDir = path.join(rootDir, "consumer-opencode-dir");
+      await initTestRepo(consumerDir);
+      await fs.mkdir(path.join(consumerDir, ".opencode/skills"), { recursive: true });
+
+      const result = await runCli(consumerDir, [
+        "fetch",
+        "reviewer",
+        "--registry",
+        registryDir,
+      ]);
+      expect(result.exitCode).toBe(0);
+
+      const config = await readYamlFile<SkillpupConfig>(
+        path.join(consumerDir, "skillpup.config.yaml")
+      );
+      expect(config.skillsDir).toBe(".opencode/skills");
+      expect(
+        await fileExists(path.join(consumerDir, ".opencode/skills/reviewer/SKILL.md"))
+      ).toBe(true);
+    },
+    TEST_TIMEOUT
+  );
+
+  it(
+    "reuses an existing .github/skills directory when bootstrapping a consumer repo",
+    async () => {
+      const registryDir = path.join(rootDir, "registry-github-skills-dir");
+      await runCli(rootDir, ["bury", "init", registryDir]);
+      await initTestRepo(registryDir);
+
+      const source = await createSkillRepo({
+        skillName: "reviewer",
+        versions: ["v1.0.0"],
+      });
+      await runCli(rootDir, ["bury", source.repoDir, "--registry", registryDir]);
+
+      const consumerDir = path.join(rootDir, "consumer-github-skills-dir");
+      await initTestRepo(consumerDir);
+      await fs.mkdir(path.join(consumerDir, ".github/skills"), { recursive: true });
+
+      const result = await runCli(consumerDir, [
+        "fetch",
+        "reviewer",
+        "--registry",
+        registryDir,
+      ]);
+      expect(result.exitCode).toBe(0);
+
+      const config = await readYamlFile<SkillpupConfig>(
+        path.join(consumerDir, "skillpup.config.yaml")
+      );
+      expect(config.skillsDir).toBe(".github/skills");
+      expect(
+        await fileExists(path.join(consumerDir, ".github/skills/reviewer/SKILL.md"))
+      ).toBe(true);
+    },
+    TEST_TIMEOUT
+  );
+
+  it(
+    "keeps an explicit skillsDir even when repo markers suggest a different default",
+    async () => {
+      const registryDir = path.join(rootDir, "registry-explicit-skills-dir");
+      await runCli(rootDir, ["bury", "init", registryDir]);
+      await initTestRepo(registryDir);
+
+      const source = await createSkillRepo({
+        skillName: "reviewer",
+        versions: ["v1.0.0"],
+      });
+      await runCli(rootDir, ["bury", source.repoDir, "--registry", registryDir]);
+
+      const consumerDir = path.join(rootDir, "consumer-explicit-skills-dir");
+      await initTestRepo(consumerDir);
+      await fs.writeFile(path.join(consumerDir, "AGENTS.md"), "# Repo instructions\n", "utf8");
+      await fs.writeFile(
+        path.join(consumerDir, "skillpup.config.yaml"),
+        `registry:
+  type: git
+  url: ${registryDir}
+skillsDir: .agent/skills
+skills:
+  - name: reviewer
+`,
+        "utf8"
+      );
+
+      const result = await runCli(consumerDir, ["fetch"]);
+      expect(result.exitCode).toBe(0);
+
+      const config = await readYamlFile<SkillpupConfig>(
+        path.join(consumerDir, "skillpup.config.yaml")
+      );
+      expect(config.skillsDir).toBe(".agent/skills");
+      expect(
+        await fileExists(path.join(consumerDir, ".agent/skills/reviewer/SKILL.md"))
+      ).toBe(true);
+      expect(
+        await fileExists(path.join(consumerDir, ".agents/skills/reviewer/SKILL.md"))
+      ).toBe(false);
+    },
+    TEST_TIMEOUT
+  );
+
+  it(
+    "uses .agents/skills when repo markers are present but no skills directory exists",
+    async () => {
+      const registryDir = path.join(rootDir, "registry-marker-default");
+      await runCli(rootDir, ["bury", "init", registryDir]);
+      await initTestRepo(registryDir);
+
+      const source = await createSkillRepo({
+        skillName: "reviewer",
+        versions: ["v1.0.0"],
+      });
+      await runCli(rootDir, ["bury", source.repoDir, "--registry", registryDir]);
+
+      const consumerDir = path.join(rootDir, "consumer-marker-default");
+      await initTestRepo(consumerDir);
+      await fs.mkdir(path.join(consumerDir, ".github"), { recursive: true });
+      await fs.writeFile(
+        path.join(consumerDir, ".github", "copilot-instructions.md"),
+        "# Copilot instructions\n",
+        "utf8"
+      );
+
+      const result = await runCli(consumerDir, [
+        "fetch",
+        "reviewer",
+        "--registry",
+        registryDir,
+      ]);
+      expect(result.exitCode).toBe(0);
+
+      const config = await readYamlFile<SkillpupConfig>(
+        path.join(consumerDir, "skillpup.config.yaml")
+      );
+      expect(config.skillsDir).toBe(".agents/skills");
+      expect(
+        await fileExists(path.join(consumerDir, ".agents/skills/reviewer/SKILL.md"))
+      ).toBe(true);
+    },
+    TEST_TIMEOUT
+  );
+
+  it(
+    "prefers .agents/skills when multiple existing skills directories are present",
+    async () => {
+      const registryDir = path.join(rootDir, "registry-multiple-skills-dirs");
+      await runCli(rootDir, ["bury", "init", registryDir]);
+      await initTestRepo(registryDir);
+
+      const source = await createSkillRepo({
+        skillName: "reviewer",
+        versions: ["v1.0.0"],
+      });
+      await runCli(rootDir, ["bury", source.repoDir, "--registry", registryDir]);
+
+      const consumerDir = path.join(rootDir, "consumer-multiple-skills-dirs");
+      await initTestRepo(consumerDir);
+      await fs.mkdir(path.join(consumerDir, ".agents/skills"), { recursive: true });
+      await fs.mkdir(path.join(consumerDir, ".opencode/skills"), { recursive: true });
+
+      const result = await runCli(consumerDir, [
+        "fetch",
+        "reviewer",
+        "--registry",
+        registryDir,
+      ]);
+      expect(result.exitCode).toBe(0);
+
+      const config = await readYamlFile<SkillpupConfig>(
+        path.join(consumerDir, "skillpup.config.yaml")
+      );
+      expect(config.skillsDir).toBe(".agents/skills");
+      expect(
+        await fileExists(path.join(consumerDir, ".agents/skills/reviewer/SKILL.md"))
+      ).toBe(true);
+      expect(
+        await fileExists(path.join(consumerDir, ".opencode/skills/reviewer/SKILL.md"))
+      ).toBe(false);
     },
     TEST_TIMEOUT
   );

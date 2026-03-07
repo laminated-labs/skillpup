@@ -15,8 +15,8 @@ import {
   toGitRelativePath,
 } from "./git.js";
 import { openRegistryForRead } from "./git-bundle-backend.js";
+import { resolveSkillsDir } from "./skills-dir.js";
 import {
-  DEFAULT_SKILLS_DIR,
   LOCKFILE_BASENAME,
   compareSemverDescending,
   formatSkillRef,
@@ -90,7 +90,7 @@ export async function fetchSkills(options: {
       type: "git" as const,
       url: options.registry!,
     },
-    skillsDir: DEFAULT_SKILLS_DIR,
+    skillsDir: await resolveSkillsDir(configDir),
     skills: [],
   };
 
