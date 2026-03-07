@@ -85,6 +85,7 @@ By default, `skillpup bury`:
 - uses the highest semver-like tag as the stored version when available
 - falls back to the selected ref or source commit when no semver tag is available
 - derives the skill name from the repository name unless `--name` is provided
+- accepts GitHub tree URLs and automatically infers `--ref` and `--path`
 
 If the skill lives in a nested directory, point at it explicitly:
 

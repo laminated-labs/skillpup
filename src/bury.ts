@@ -9,6 +9,7 @@ import {
   commitChanges,
   ensureEmptyDir,
   ensureNoUnrelatedStagedChanges,
+  gitRefExists,
   getCurrentBranch,
   getGitRoot,
   getHeadCommit,
@@ -25,6 +26,10 @@ import {
   resolveInside,
   validateSkillName,
 } from "./utils.js";
+import {
+  parseGitHubTreeUrl,
+  splitGitHubTreeRefAndPath,
+} from "./source-spec.js";
 
 function deriveDefaultSkillName(sourceGitUrl: string, skillPath?: string) {
   if (skillPath) {
@@ -67,15 +72,33 @@ export async function burySkill(options: {
   const cwd = options.cwd ?? process.cwd();
   const registryRoot = path.resolve(cwd, options.registry ?? ".");
   const backend = await openRegistryForWrite(registryRoot);
+  const parsedGitHubTreeUrl = parseGitHubTreeUrl(options.sourceGitUrl);
+  const cloneSourceUrl = parsedGitHubTreeUrl?.repoUrl ?? options.sourceGitUrl;
 
   const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "skillpup-source-"));
   const cloneDir = path.join(tempRoot, "source");
 
   try {
     await ensureEmptyDir(tempRoot);
-    await cloneRepo(options.sourceGitUrl, cloneDir);
+    await cloneRepo(cloneSourceUrl, cloneDir);
 
-    let selectedRef = options.ref?.trim();
+    let inferredRef = options.ref?.trim();
+    let inferredPath = options.path;
+    if (parsedGitHubTreeUrl && (!inferredRef || !inferredPath)) {
+      const resolved = await splitGitHubTreeRefAndPath(
+        parsedGitHubTreeUrl.refAndPathSegments,
+        (candidate) => gitRefExists(cloneDir, candidate)
+      );
+      if (!resolved) {
+        throw new Error(
+          `Unable to resolve GitHub tree URL ref/path: ${options.sourceGitUrl}`
+        );
+      }
+      inferredRef ??= resolved.ref;
+      inferredPath ??= resolved.path;
+    }
+
+    let selectedRef = inferredRef;
     let selectedTag: string | undefined;
 
     if (selectedRef) {
@@ -94,14 +117,14 @@ export async function burySkill(options: {
       }
     }
 
-    const sourceRef = options.ref?.trim() ?? selectedTag ?? selectedRef ?? (await getCurrentBranch(cloneDir));
+    const sourceRef = inferredRef ?? selectedTag ?? selectedRef ?? (await getCurrentBranch(cloneDir));
     const sourceCommit = await getHeadCommit(cloneDir);
-    const sourceSkillRoot = options.path
-      ? resolveInside(cloneDir, options.path)
+    const sourceSkillRoot = inferredPath
+      ? resolveInside(cloneDir, inferredPath)
       : cloneDir;
 
     if (!(await pathExists(sourceSkillRoot))) {
-      throw new Error(`Skill path does not exist: ${options.path}`);
+      throw new Error(`Skill path does not exist: ${inferredPath}`);
     }
 
     const skillMarkerPath = path.join(sourceSkillRoot, "SKILL.md");
@@ -110,10 +133,10 @@ export async function burySkill(options: {
     }
 
     const skillName =
-      options.name ?? deriveDefaultSkillName(options.sourceGitUrl, options.path);
+      options.name ?? deriveDefaultSkillName(options.sourceGitUrl, inferredPath);
     validateSkillName(skillName);
     const version = options.version ?? selectedTag ?? sourceCommit;
-    const sourcePath = options.path ?? ".";
+    const sourcePath = inferredPath ?? ".";
 
     const result = await backend.publishVersion({
       skillName,

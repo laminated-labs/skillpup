@@ -69,6 +69,26 @@ export async function getCurrentBranch(cwd: string) {
   return branch || "HEAD";
 }
 
+export async function gitRefExists(cwd: string, ref: string) {
+  const candidates = [
+    ref,
+    `origin/${ref}`,
+    `refs/tags/${ref}`,
+    `refs/remotes/origin/${ref}`,
+  ];
+
+  for (const candidate of candidates) {
+    try {
+      await runGit(["rev-parse", "--verify", "--quiet", `${candidate}^{commit}`], cwd);
+      return true;
+    } catch {
+      continue;
+    }
+  }
+
+  return false;
+}
+
 export async function getGitRoot(cwd: string) {
   return runGitCapture(["rev-parse", "--show-toplevel"], cwd);
 }
