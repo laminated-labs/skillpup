@@ -17,7 +17,7 @@ Inspired by our great friends at [Ambush Capital](https://www.ambush.capital) an
 - fetch those skills into a consumer repository with `skillpup fetch`
 - record the chosen versions in `skillpup.config.yaml`
 - pin fetched contents and source metadata in `skillpup.lock.yaml`
-- install the bundle contents into `.agent/skills/<skill-name>`
+- install the bundle contents into `.agents/skills/<skill-name>`
 
 The CLI is designed for private, git-native workflows where teams want reproducible skill installs without maintaining a separate package registry.
 
@@ -109,7 +109,7 @@ That first fetch bootstraps the consumer repository by creating:
 
 - `skillpup.config.yaml`
 - `skillpup.lock.yaml`
-- `.agent/skills/reviewer/`
+- `.agents/skills/reviewer/`
 
 After the initial fetch, future syncs can rely on the saved config:
 
@@ -140,7 +140,7 @@ registry:
   type: git
   url: ../skill-registry
 
-skillsDir: .agent/skills
+skillsDir: .agents/skills
 
 skills:
   - name: reviewer
@@ -178,17 +178,17 @@ skills:
 
 ### Installed Skills Directory
 
-Fetched skill files are installed into `.agent/skills` by default:
+Fetched skill files are installed into `.agents/skills` by default:
 
 ```text
-.agent/
+.agents/
   skills/
     reviewer/
       SKILL.md
       ...
 ```
 
-You can override the install root with `skillsDir` in config.
+If `skillsDir` is omitted, `skillpup` reuses an existing supported skills directory when it finds one and otherwise falls back to `.agents/skills`. `skillpup fetch --registry ...` writes the resolved path into the generated config.
 
 ## Configuration Reference
 
@@ -196,7 +196,7 @@ You can override the install root with `skillsDir` in config.
 | --- | --- | --- | --- |
 | `registry.type` | string | `"git"` | Registry backend type. Current supported value is `git`. |
 | `registry.url` | string | none | Path or git URL used for fetching skills. |
-| `skillsDir` | string | `.agent/skills` | Destination directory for installed skill bundles. |
+| `skillsDir` | string | detected, fallback `.agents/skills` | Destination directory for installed skill bundles. |
 | `skills[].name` | string | none | Skill name to fetch. |
 | `skills[].version` | string | highest available semver-like version | Optional explicit version to pin in config. |
 
@@ -224,6 +224,7 @@ Options:
 Behavior:
 
 - bootstraps config if no config file exists and `--registry` is provided
+- writes the resolved `skillsDir` into bootstrapped config files
 - rewrites the installed skill directory from registry contents on each fetch
 - removes skills that are no longer declared in config
 - verifies installed contents against the registry digest before completing
@@ -290,6 +291,19 @@ The directory you publish with `bury` must contain a `SKILL.md` at its root. Use
 ### Running from a nested directory
 
 `fetch` searches parent directories for `skillpup` config files, so you can run it from subdirectories inside a consumer repository as long as the config exists higher up the tree.
+
+### Skills directory detection
+
+When `skillsDir` is not set in config, `skillpup` walks upward from the current config directory or bootstrap working directory to the git root and resolves the first match it finds in this order:
+
+- an existing `.agents/skills`
+- an existing `.github/skills`
+- an existing `.opencode/skills`
+- an existing `.claude/skills`
+- an existing `.agent/skills`
+- otherwise `.agents/skills`
+
+Repo markers such as `AGENTS.md`, `.github/copilot-instructions.md`, `.github/instructions/`, `.github/agents/`, `CLAUDE.md`, `.claude/CLAUDE.md`, `.claude/settings.json`, `.claude/settings.local.json`, `.claude/agents/`, and `.opencode/` are treated as hints that the repository uses agent tooling, but they still resolve to `.agents/skills` unless one of the supported skills directories already exists.
 
 ## Development
 
