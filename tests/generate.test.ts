@@ -3,6 +3,7 @@ import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { fetchSkills } from "../src/fetch.js";
 import {
+  buildRegistrySkillChoiceLabel,
   buildRegistrySkillChoiceValue,
   type FetchPrompts,
 } from "../src/fetch-prompts.js";
@@ -104,6 +105,112 @@ describe("skillpup generate mode", () => {
 
       expect(result.exitCode).toBe(1);
       expect(result.stderr).toContain("Cannot prompt for registry skills");
+    },
+    TEST_TIMEOUT
+  );
+
+  it(
+    "skips unrelated registry scans when explicit generate skills are provided",
+    async () => {
+      const registryDir = path.join(rootDir, "registry-generate-explicit");
+      await runCli(rootDir, ["bury", "init", registryDir]);
+      await initTestRepo(registryDir);
+
+      const reviewer = await createSkillRepo({
+        skillName: "reviewer",
+        versions: ["v1.0.0"],
+      });
+      const broken = await createSkillRepo({
+        skillName: "broken",
+        versions: ["v1.0.0"],
+      });
+      await runCli(rootDir, ["bury", reviewer.repoDir, "--registry", registryDir]);
+      await runCli(rootDir, ["bury", broken.repoDir, "--registry", registryDir]);
+
+      await fs.writeFile(
+        path.join(registryDir, "skills", "broken", "versions", "v1.0.0", "metadata.yaml"),
+        "not: [valid\n",
+        "utf8"
+      );
+
+      const consumerDir = path.join(rootDir, "consumer-generate-explicit");
+      await initTestRepo(consumerDir);
+
+      const result = await runCli(consumerDir, [
+        "fetch",
+        "reviewer",
+        "--generate",
+        "--registry",
+        registryDir,
+      ]);
+
+      expect(result.exitCode).toBe(0);
+
+      const config = await readYamlFile<SkillpupConfig>(
+        path.join(consumerDir, "skillpup.config.yaml")
+      );
+      expect(config.skills).toEqual([{ name: "reviewer", version: "v1.0.0" }]);
+    },
+    TEST_TIMEOUT
+  );
+
+  it(
+    "uses index ordering to choose the latest semver version without reading every metadata file",
+    async () => {
+      const registryDir = path.join(rootDir, "registry-generate-index");
+      await runCli(rootDir, ["bury", "init", registryDir]);
+      await initTestRepo(registryDir);
+
+      const reviewer = await createSkillRepo({
+        skillName: "reviewer",
+        versions: ["v1.0.0"],
+      });
+      await runCli(rootDir, ["bury", reviewer.repoDir, "--registry", registryDir]);
+
+      await fs.writeFile(
+        path.join(reviewer.repoDir, "SKILL.md"),
+        "# reviewer\n\nVersion main\n",
+        "utf8"
+      );
+      await fs.writeFile(
+        path.join(reviewer.repoDir, "template.txt"),
+        "template-main\n",
+        "utf8"
+      );
+      await runCli(rootDir, [
+        "bury",
+        reviewer.repoDir,
+        "--ref",
+        "main",
+        "--version",
+        "build-main",
+        "--registry",
+        registryDir,
+      ]);
+
+      await fs.writeFile(
+        path.join(registryDir, "skills", "reviewer", "versions", "build-main", "metadata.yaml"),
+        "not: [valid\n",
+        "utf8"
+      );
+
+      const consumerDir = path.join(rootDir, "consumer-generate-index");
+      await initTestRepo(consumerDir);
+
+      const result = await runCli(consumerDir, [
+        "fetch",
+        "--generate",
+        "--all",
+        "--registry",
+        registryDir,
+      ]);
+
+      expect(result.exitCode).toBe(0);
+
+      const config = await readYamlFile<SkillpupConfig>(
+        path.join(consumerDir, "skillpup.config.yaml")
+      );
+      expect(config.skills).toEqual([{ name: "reviewer", version: "v1.0.0" }]);
     },
     TEST_TIMEOUT
   );
@@ -273,6 +380,29 @@ describe("skillpup generate mode", () => {
           "replace"
         )
       ).toBe("writer");
+    },
+    TEST_TIMEOUT
+  );
+
+  it(
+    "shows both latest and pinned versions when a replace selection keeps an older configured version",
+    async () => {
+      expect(
+        buildRegistrySkillChoiceLabel({
+          name: "reviewer",
+          version: "v2.0.0",
+          configured: true,
+          configuredVersion: "v1.0.0",
+        })
+      ).toBe("reviewer  latest v2.0.0  pinned v1.0.0");
+      expect(
+        buildRegistrySkillChoiceLabel({
+          name: "writer",
+          version: "v1.0.0",
+          configured: true,
+          configuredVersion: "v1.0.0",
+        })
+      ).toBe("writer  v1.0.0  (configured)");
     },
     TEST_TIMEOUT
   );
