@@ -117,6 +117,12 @@ After the initial fetch, future syncs can rely on the saved config:
 skillpup fetch
 ```
 
+If you want to bootstrap a consumer config from everything currently buried in the registry, generate it directly from the registry:
+
+```bash
+skillpup fetch --generate --all --registry ../skill-registry
+```
+
 If the config lives in a parent directory, `skillpup` will discover it when run from nested subdirectories.
 
 ## Core Concepts
@@ -221,11 +227,19 @@ Arguments:
 Options:
 
 - `--registry <path-or-git-url>`: override the configured registry for the current run
+- `--generate`: build or update config entries from the registry before fetching
+- `--all`: when used with `--generate`, select every available skill in the registry
+- `--merge`: when used with `--generate`, merge the generated selection into the existing config
+- `--replace`: when used with `--generate`, replace the existing config skill list
 - `--commit`: commit config and lockfile changes
 
 Behavior:
 
 - bootstraps config if no config file exists and `--registry` is provided
+- `fetch --generate --registry ...` can create a config by selecting from the registry instead of naming skills up front
+- `fetch --generate --all` selects every skill in the registry without prompting
+- `fetch --generate` prompts before changing an existing config unless `--merge` or `--replace` is passed
+- `fetch --generate` requires a TTY unless you pass explicit skill names or `--all`
 - writes the resolved `skillsDir` into bootstrapped config files
 - ensures the effective `skillsDir` is ignored in the git-root `.gitignore` when needed
 - rewrites the installed skill directory from registry contents on each fetch
