@@ -86,10 +86,6 @@ function buildFetchCommitMessage(
     return `chore(skillpup): fetch ${refs.join(", ")}`;
   }
 
-  if (removed.length > 0) {
-    return "chore(skillpup): fetch sync";
-  }
-
   return "chore(skillpup): fetch sync";
 }
 
