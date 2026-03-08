@@ -116,6 +116,29 @@ export class GitBundleRegistryBackend {
     return index.versions;
   }
 
+  async listSkills() {
+    const skillsRoot = path.join(this.rootPath, "skills");
+    if (!(await pathExists(skillsRoot))) {
+      return [];
+    }
+
+    const entries = await fs.readdir(skillsRoot, { withFileTypes: true });
+    const skills: string[] = [];
+    for (const entry of entries) {
+      if (!entry.isDirectory()) {
+        continue;
+      }
+
+      if (!(await pathExists(path.join(skillsRoot, entry.name, "index.yaml")))) {
+        continue;
+      }
+
+      skills.push(entry.name);
+    }
+
+    return skills.sort((left, right) => left.localeCompare(right));
+  }
+
   async readVersionMetadata(skillName: string, version: string) {
     const metadataPath = this.getMetadataPath(skillName, version);
     if (!(await pathExists(metadataPath))) {

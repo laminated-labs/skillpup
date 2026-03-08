@@ -19,15 +19,28 @@ export async function runCli(argv: string[] = process.argv) {
     .command("fetch")
     .argument("[skills...]", "Skill names or name@version specifiers")
     .option("--registry <path-or-git-url>", "Override the configured registry for this run")
+    .option("--generate", "Generate config entries from the registry before fetching")
+    .option("--all", "When used with --generate, select every available registry skill")
+    .option("--merge", "When used with --generate, merge generated skills into the existing config")
+    .option("--replace", "When used with --generate, replace the existing config skill list")
     .option("--commit", "Commit config and lockfile changes")
     .action(async (skills: string[], options) => {
-      const result = await runWithSpinner("Tracking the scent...", () =>
+      if (options.merge && options.replace) {
+        throw new Error("Cannot combine --merge and --replace.");
+      }
+
+      const task = () =>
         fetchSkills({
           skillSpecs: skills,
           registry: options.registry,
           commit: options.commit,
-        })
-      );
+          generate: options.generate,
+          all: options.all,
+          mergeStrategy: options.replace ? "replace" : options.merge ? "merge" : undefined,
+        });
+      const result = options.generate
+        ? await task()
+        : await runWithSpinner("Tracking the scent...", task);
 
       const installedRefs = result.installed.map((skill) => `${skill.name}@${skill.version}`);
       if (installedRefs.length > 0) {
