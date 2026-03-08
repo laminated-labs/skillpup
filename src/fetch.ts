@@ -45,6 +45,11 @@ type RegistrySkillSummary = {
   version: string;
 };
 
+type VersionedEntry = {
+  version: string;
+  buriedAt: string;
+};
+
 function buildDesiredOrder<T extends { name: string }>(entries: T[]) {
   const unique = new Map<string, T>();
   for (const entry of entries) {
@@ -53,7 +58,7 @@ function buildDesiredOrder<T extends { name: string }>(entries: T[]) {
   return Array.from(unique.values());
 }
 
-function chooseHighestVersion(versions: SkillVersionMetadata[]) {
+function chooseHighestVersion<T extends VersionedEntry>(versions: T[]) {
   const semverVersions = versions.filter((entry) => parseSemverLike(entry.version));
   if (semverVersions.length > 0) {
     return [...semverVersions].sort((left, right) =>
@@ -88,9 +93,28 @@ function buildFetchCommitMessage(
   return "chore(skillpup): fetch sync";
 }
 
+function createMetadataReader(
+  registryBackend: Awaited<ReturnType<typeof openRegistryForRead>>["backend"]
+) {
+  const cache = new Map<string, Promise<SkillVersionMetadata>>();
+
+  return (name: string, version: string) => {
+    const cacheKey = `${name}@${version}`;
+    const existing = cache.get(cacheKey);
+    if (existing) {
+      return existing;
+    }
+
+    const next = registryBackend.readVersionMetadata(name, version);
+    cache.set(cacheKey, next);
+    return next;
+  };
+}
+
 async function resolveRequestedEntries(
   registryBackend: Awaited<ReturnType<typeof openRegistryForRead>>["backend"],
-  requestedMap: Map<string, string | undefined>
+  requestedMap: Map<string, string | undefined>,
+  readVersionMetadata: (name: string, version: string) => Promise<SkillVersionMetadata>
 ) {
   const resolvedEntries: ResolvedSkillConfigEntry[] = [];
   for (const [name, configuredVersion] of requestedMap.entries()) {
@@ -101,14 +125,9 @@ async function resolveRequestedEntries(
 
     let resolvedVersion = configuredVersion;
     if (resolvedVersion) {
-      await registryBackend.readVersionMetadata(name, resolvedVersion);
+      await readVersionMetadata(name, resolvedVersion);
     } else {
-      const availableMetadata = await Promise.all(
-        availableVersions.map((entry) =>
-          registryBackend.readVersionMetadata(name, entry.version)
-        )
-      );
-      resolvedVersion = chooseHighestVersion(availableMetadata).version;
+      resolvedVersion = chooseHighestVersion(availableVersions).version;
     }
 
     resolvedEntries.push({ name, version: resolvedVersion });
@@ -129,15 +148,9 @@ async function listRegistrySkills(
       continue;
     }
 
-    const availableMetadata = await Promise.all(
-      availableVersions.map((entry) =>
-        registryBackend.readVersionMetadata(name, entry.version)
-      )
-    );
-
     skills.push({
       name,
-      version: chooseHighestVersion(availableMetadata).version,
+      version: chooseHighestVersion(availableVersions).version,
     });
   }
 
@@ -217,6 +230,8 @@ export async function fetchSkills(options: FetchOptions = {}): Promise<FetchResu
 
   const registryHandle = await openRegistryForRead(effectiveRegistry);
   try {
+    const readVersionMetadata = createMetadataReader(registryHandle.backend);
+
     if (options.generate) {
       let mergeStrategy = options.mergeStrategy;
       const hasConfiguredSkills = config.skills.length > 0;
@@ -234,31 +249,36 @@ export async function fetchSkills(options: FetchOptions = {}): Promise<FetchResu
         });
       }
 
-      const availableSkills = await listRegistrySkills(registryHandle.backend);
-      if (availableSkills.length === 0) {
-        throw new Error("No skills were found in the registry.");
-      }
-
       let selectedSpecs: string[];
       if (requestedSpecs.length > 0) {
         selectedSpecs = requestedSpecs;
-      } else if (options.all) {
-        selectedSpecs = availableSkills.map((skill) => skill.name);
       } else {
-        if (!isInteractive) {
-          throw new Error(
-            "Cannot prompt for registry skills in non-interactive mode. Pass skill names or use --all with --generate."
-          );
+        const availableSkills = await listRegistrySkills(registryHandle.backend);
+        if (availableSkills.length === 0) {
+          throw new Error("No skills were found in the registry.");
         }
 
-        selectedSpecs = await prompts.selectSkillsToGenerate({
-          availableSkills: availableSkills.map((skill) => ({
-            ...skill,
-            configured: config.skills.some((entry) => entry.name === skill.name),
-            configuredVersion: config.skills.find((entry) => entry.name === skill.name)?.version,
-          })),
-          mergeStrategy: mergeStrategy ?? "replace",
-        });
+        if (options.all) {
+          selectedSpecs = availableSkills.map((skill) => skill.name);
+        } else {
+          if (!isInteractive) {
+            throw new Error(
+              "Cannot prompt for registry skills in non-interactive mode. Pass skill names or use --all with --generate."
+            );
+          }
+
+          const configuredSkillsByName = new Map(
+            config.skills.map((entry) => [entry.name, entry.version] as const)
+          );
+          selectedSpecs = await prompts.selectSkillsToGenerate({
+            availableSkills: availableSkills.map((skill) => ({
+              ...skill,
+              configured: configuredSkillsByName.has(skill.name),
+              configuredVersion: configuredSkillsByName.get(skill.name),
+            })),
+            mergeStrategy: mergeStrategy ?? "replace",
+          });
+        }
       }
 
       const selectedEntries = await resolveRequestedEntries(
@@ -266,7 +286,8 @@ export async function fetchSkills(options: FetchOptions = {}): Promise<FetchResu
         new Map(selectedSpecs.map((skillSpec) => {
           const parsed = parseSkillSpecifier(skillSpec);
           return [parsed.name, parsed.version];
-        }))
+        })),
+        readVersionMetadata
       );
 
       config.skills =
@@ -287,7 +308,8 @@ export async function fetchSkills(options: FetchOptions = {}): Promise<FetchResu
 
     const resolvedEntries = await resolveRequestedEntries(
       registryHandle.backend,
-      requestedMap
+      requestedMap,
+      readVersionMetadata
     );
     const desiredSkills = buildDesiredOrder(resolvedEntries);
     config.skills = desiredSkills;
@@ -297,10 +319,7 @@ export async function fetchSkills(options: FetchOptions = {}): Promise<FetchResu
 
     const installed: SkillVersionMetadata[] = [];
     for (const skill of desiredSkills) {
-      const metadata = await registryHandle.backend.readVersionMetadata(
-        skill.name,
-        skill.version
-      );
+      const metadata = await readVersionMetadata(skill.name, skill.version);
       const previous = previousLockByName.get(skill.name);
       if (
         previous &&

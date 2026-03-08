@@ -24,7 +24,11 @@ function isPromptCancelError(error: unknown) {
   return error instanceof Error && error.name === "ExitPromptError";
 }
 
-function formatChoiceLabel(skill: RegistrySkillChoice) {
+export function buildRegistrySkillChoiceLabel(skill: RegistrySkillChoice) {
+  if (skill.configuredVersion && skill.configuredVersion !== skill.version) {
+    return `${skill.name}  latest ${skill.version}  pinned ${skill.configuredVersion}`;
+  }
+
   return `${skill.name}  ${skill.version}${skill.configured ? "  (configured)" : ""}`;
 }
 
@@ -50,7 +54,7 @@ export const defaultFetchPrompts: FetchPrompts = {
         validate: (value) =>
           value.length > 0 ? true : "Select at least one skill to continue.",
         choices: availableSkills.map((skill) => ({
-          name: formatChoiceLabel(skill),
+          name: buildRegistrySkillChoiceLabel(skill),
           value: buildRegistrySkillChoiceValue(skill, mergeStrategy),
           checked: mergeStrategy === "replace" && skill.configured,
         })),
