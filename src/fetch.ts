@@ -205,10 +205,6 @@ export async function fetchSkills(options: FetchOptions = {}): Promise<FetchResu
     skills: [],
   };
 
-  if (options.generate && options.registry) {
-    config.registry.url = options.registry;
-  }
-
   const effectiveRegistry = options.registry ?? config.registry.url;
   const lockfilePath = path.join(configDir, LOCKFILE_BASENAME);
   const lockfile = await loadLockfile(lockfilePath);
@@ -259,6 +255,7 @@ export async function fetchSkills(options: FetchOptions = {}): Promise<FetchResu
           availableSkills: availableSkills.map((skill) => ({
             ...skill,
             configured: config.skills.some((entry) => entry.name === skill.name),
+            configuredVersion: config.skills.find((entry) => entry.name === skill.name)?.version,
           })),
           mergeStrategy: mergeStrategy ?? "replace",
         });

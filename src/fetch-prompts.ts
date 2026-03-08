@@ -6,6 +6,7 @@ export type RegistrySkillChoice = {
   name: string;
   version: string;
   configured: boolean;
+  configuredVersion?: string;
 };
 
 export type FetchPrompts = {
@@ -27,6 +28,15 @@ function formatChoiceLabel(skill: RegistrySkillChoice) {
   return `${skill.name}  ${skill.version}${skill.configured ? "  (configured)" : ""}`;
 }
 
+export function buildRegistrySkillChoiceValue(
+  skill: RegistrySkillChoice,
+  mergeStrategy: GenerateMergeStrategy
+) {
+  return mergeStrategy === "replace" && skill.configuredVersion
+    ? `${skill.name}@${skill.configuredVersion}`
+    : skill.name;
+}
+
 export const defaultFetchPrompts: FetchPrompts = {
   async selectSkillsToGenerate({ availableSkills, mergeStrategy }) {
     try {
@@ -41,7 +51,7 @@ export const defaultFetchPrompts: FetchPrompts = {
           value.length > 0 ? true : "Select at least one skill to continue.",
         choices: availableSkills.map((skill) => ({
           name: formatChoiceLabel(skill),
-          value: skill.name,
+          value: buildRegistrySkillChoiceValue(skill, mergeStrategy),
           checked: mergeStrategy === "replace" && skill.configured,
         })),
       });
