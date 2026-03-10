@@ -143,7 +143,7 @@ export async function toGitRelativePath(gitRoot: string, absolutePath: string) {
 }
 
 export async function commitChanges(cwd: string, message: string) {
-  await runGit(["commit", "--no-gpg-sign", "-m", message], cwd);
+  await runGit(["commit", "-m", message], cwd);
 }
 
 export async function ensureNoUnrelatedStagedChanges(

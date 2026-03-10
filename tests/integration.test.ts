@@ -1,4 +1,5 @@
 import fs from "node:fs/promises";
+import { createRequire } from "node:module";
 import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { SkillpupConfig, SkillpupLockfile } from "../src/types.js";
@@ -15,6 +16,8 @@ import {
 } from "./helpers.js";
 
 const TEST_TIMEOUT = 120_000;
+const require = createRequire(import.meta.url);
+const packageJson = require("../package.json") as { version: string };
 
 describe("skillpup integration", () => {
   let rootDir: string;
@@ -42,6 +45,13 @@ describe("skillpup integration", () => {
     },
     TEST_TIMEOUT
   );
+
+  it("prints the CLI version with --version", async () => {
+    const result = await runCli(rootDir, ["--version"]);
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout.trim()).toBe(packageJson.version);
+  });
 
   it(
     "buries a root skill and fetches the highest semver version into a consumer repo",
@@ -296,6 +306,47 @@ describe("skillpup integration", () => {
       expect(
         await fileExists(path.join(consumerDir, ".agents/skills/writer/SKILL.md"))
       ).toBe(true);
+    },
+    TEST_TIMEOUT
+  );
+
+  it(
+    "honors repo commit signing config on fetch --commit",
+    async () => {
+      const registryDir = path.join(rootDir, "registry-fetch-commit-signing");
+      await runCli(rootDir, ["bury", "init", registryDir]);
+      await initTestRepo(registryDir);
+
+      const source = await createSkillRepo({
+        skillName: "writer",
+        versions: ["v1.0.0"],
+      });
+      await runCli(rootDir, [
+        "bury",
+        source.repoDir,
+        "--registry",
+        registryDir,
+      ]);
+
+      const consumerDir = path.join(rootDir, "consumer-fetch-commit-signing");
+      await initTestRepo(consumerDir);
+      await fs.writeFile(path.join(consumerDir, ".gitignore"), ".agents/\n", "utf8");
+      await commitAll(consumerDir, "initial");
+
+      await runGit(["config", "commit.gpgsign", "true"], consumerDir);
+      await runGit(["config", "gpg.format", "openpgp"], consumerDir);
+      await runGit(["config", "gpg.program", "/usr/bin/false"], consumerDir);
+
+      const result = await runCli(consumerDir, [
+        "fetch",
+        "writer",
+        "--registry",
+        registryDir,
+        "--commit",
+      ]);
+
+      expect(result.exitCode).toBe(1);
+      expect(result.stderr).toContain("failed to sign the data");
     },
     TEST_TIMEOUT
   );

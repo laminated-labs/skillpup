@@ -11,9 +11,10 @@ export async function runCli(argv: string[] = process.argv) {
   const program = new Command();
 
   program
+    .enablePositionalOptions()
     .name("skillpup")
     .description("Private registry workflow for agent skills.")
-    .version(packageJson.version, "-V, --cli-version");
+    .version(packageJson.version);
 
   program
     .command("fetch")
