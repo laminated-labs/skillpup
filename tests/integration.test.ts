@@ -301,6 +301,47 @@ describe("skillpup integration", () => {
   );
 
   it(
+    "honors repo commit signing config on fetch --commit",
+    async () => {
+      const registryDir = path.join(rootDir, "registry-fetch-commit-signing");
+      await runCli(rootDir, ["bury", "init", registryDir]);
+      await initTestRepo(registryDir);
+
+      const source = await createSkillRepo({
+        skillName: "writer",
+        versions: ["v1.0.0"],
+      });
+      await runCli(rootDir, [
+        "bury",
+        source.repoDir,
+        "--registry",
+        registryDir,
+      ]);
+
+      const consumerDir = path.join(rootDir, "consumer-fetch-commit-signing");
+      await initTestRepo(consumerDir);
+      await fs.writeFile(path.join(consumerDir, ".gitignore"), ".agents/\n", "utf8");
+      await commitAll(consumerDir, "initial");
+
+      await runGit(["config", "commit.gpgsign", "true"], consumerDir);
+      await runGit(["config", "gpg.format", "openpgp"], consumerDir);
+      await runGit(["config", "gpg.program", "/usr/bin/false"], consumerDir);
+
+      const result = await runCli(consumerDir, [
+        "fetch",
+        "writer",
+        "--registry",
+        registryDir,
+        "--commit",
+      ]);
+
+      expect(result.exitCode).toBe(1);
+      expect(result.stderr).toContain("failed to sign the data");
+    },
+    TEST_TIMEOUT
+  );
+
+  it(
     "preserves a legacy .agent/skills directory when bootstrapping a consumer repo",
     async () => {
       const registryDir = path.join(rootDir, "registry-legacy-dir");
