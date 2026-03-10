@@ -233,11 +233,14 @@ Options:
 - `--all`: when used with `--generate`, select every available skill in the registry
 - `--merge`: when used with `--generate`, merge the generated selection into the existing config
 - `--replace`: when used with `--generate`, replace the existing config skill list
+- `--force`: accept digest changes for explicitly requested skills and rewrite their lockfile entries
 - `--commit`: commit config and lockfile changes
 
 Behavior:
 
 - bootstraps config if no config file exists and `--registry` is provided
+- when `skills...` are passed, only those named skills are fetched for that run
+- named fetches update config and lockfile entries for the requested skills without reinstalling unrelated configured skills
 - `fetch --generate --registry ...` can create a config by selecting from the registry instead of naming skills up front
 - `fetch --generate --all` selects every skill in the registry without prompting
 - `fetch --generate` prompts before changing an existing config unless `--merge` or `--replace` is passed
@@ -272,6 +275,23 @@ Behavior:
 - if no semver-like tag exists, the source branch or commit is used
 - if `--version` is omitted, the selected tag or commit becomes the stored version
 
+### `skillpup bury refresh <target-folder>`
+
+Refreshes the digest metadata for an already-buried skill version after editing the
+registry bundle in place.
+
+Options:
+
+- `--registry <local-path>`: local path to the registry repository; inferred from the target when omitted
+- `--commit`: commit the refreshed bundle metadata and edited version contents
+
+Behavior:
+
+- `target-folder` may point at the buried version directory, its `skill/` directory, or any file inside that tree
+- recomputes the digest from the existing bundled files under `.../skill`
+- rewrites `metadata.yaml` and the matching `index.yaml` entry when the digest changes
+- leaves metadata untouched when the bundle digest is unchanged
+
 ## Integrity and Git Behavior
 
 `skillpup` is designed to keep fetched skills reproducible and auditable.
@@ -280,6 +300,8 @@ Behavior:
 - fetch detects registry mutations after locking and fails on digest mismatches
 - digest checks include file contents and permission-sensitive filesystem metadata
 - repeated fetches reconstruct the installed skill directory from the registry bundle
+- `bury refresh` intentionally mutates an existing buried version in place; consumers locked to the older digest will keep failing until their lockfile is updated
+- `fetch <skill-name> --force` accepts a refreshed digest for that named skill and rewrites its lockfile entry
 
 Commit behavior:
 

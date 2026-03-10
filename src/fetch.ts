@@ -32,6 +32,7 @@ type FetchOptions = {
   skillSpecs?: string[];
   registry?: string;
   commit?: boolean;
+  force?: boolean;
   cwd?: string;
   generate?: boolean;
   all?: boolean;
@@ -219,6 +220,10 @@ export async function fetchSkills(options: FetchOptions = {}): Promise<FetchResu
   const lockfile = await loadLockfile(lockfilePath);
   const previousLockByName = new Map(lockfile.skills.map((entry) => [entry.name, entry]));
   const requestedSpecs = options.skillSpecs ?? [];
+  const isPartialFetch = !options.generate && requestedSpecs.length > 0;
+  const explicitlyRequestedNames = new Set(
+    requestedSpecs.map((spec) => parseSkillSpecifier(spec).name)
+  );
   const prompts = options.prompts ?? defaultFetchPrompts;
   const isInteractive =
     options.isInteractive ?? Boolean(process.stdin.isTTY && process.stdout.isTTY);
@@ -294,7 +299,9 @@ export async function fetchSkills(options: FetchOptions = {}): Promise<FetchResu
       commitRequestedNames = selectedEntries.map((entry) => entry.name);
     }
 
-    const requestedMap = new Map(config.skills.map((entry) => [entry.name, entry.version]));
+    const requestedMap = isPartialFetch
+      ? new Map<string, string | undefined>()
+      : new Map(config.skills.map((entry) => [entry.name, entry.version]));
     if (!options.generate) {
       for (const skillSpec of requestedSpecs) {
         const parsed = parseSkillSpecifier(skillSpec);
@@ -308,7 +315,9 @@ export async function fetchSkills(options: FetchOptions = {}): Promise<FetchResu
       readVersionMetadata
     );
     const desiredSkills = buildDesiredOrder(resolvedEntries);
-    config.skills = desiredSkills;
+    config.skills = isPartialFetch
+      ? mergeGeneratedSkills(config.skills, desiredSkills)
+      : desiredSkills;
 
     const skillsDir = resolveInside(configDir, config.skillsDir);
     await ensureDir(skillsDir);
@@ -320,7 +329,8 @@ export async function fetchSkills(options: FetchOptions = {}): Promise<FetchResu
       if (
         previous &&
         previous.version === metadata.version &&
-        previous.digest !== metadata.digest
+        previous.digest !== metadata.digest &&
+        !(options.force && explicitlyRequestedNames.has(skill.name))
       ) {
         throw new Error(
           `Digest mismatch for ${skill.name}@${skill.version}. The registry contents changed after locking.`
@@ -343,18 +353,23 @@ export async function fetchSkills(options: FetchOptions = {}): Promise<FetchResu
       installed.push(metadata);
     }
 
-    const desiredNames = new Set(desiredSkills.map((entry) => entry.name));
-    const removed = lockfile.skills
-      .filter((entry) => !desiredNames.has(entry.name))
-      .map((entry) => entry.name);
-    for (const removedSkill of removed) {
-      const destinationPath = resolveInside(skillsDir, removedSkill);
-      await removePath(destinationPath);
+    let removed: string[] = [];
+    if (!isPartialFetch) {
+      const desiredNames = new Set(desiredSkills.map((entry) => entry.name));
+      removed = lockfile.skills
+        .filter((entry) => !desiredNames.has(entry.name))
+        .map((entry) => entry.name);
+      for (const removedSkill of removed) {
+        const destinationPath = resolveInside(skillsDir, removedSkill);
+        await removePath(destinationPath);
+      }
     }
 
-    lockfile.skills = [...installed].sort((left, right) =>
-      left.name.localeCompare(right.name)
-    );
+    lockfile.skills = isPartialFetch
+      ? buildDesiredOrder([...lockfile.skills, ...installed]).sort((left, right) =>
+          left.name.localeCompare(right.name)
+        )
+      : [...installed].sort((left, right) => left.name.localeCompare(right.name));
 
     await writeProjectConfig(configPath, config);
     await writeLockfile(lockfilePath, lockfile);

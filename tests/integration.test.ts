@@ -217,6 +217,79 @@ describe("skillpup integration", () => {
   );
 
   it(
+    "fetches only explicitly named skills when config contains others",
+    async () => {
+      const registryDir = path.join(rootDir, "registry-partial-fetch");
+      await runCli(rootDir, ["bury", "init", registryDir]);
+      await initTestRepo(registryDir);
+
+      const reviewer = await createSkillRepo({
+        skillName: "reviewer",
+        versions: ["v1.0.0"],
+      });
+      const writer = await createSkillRepo({
+        skillName: "writer",
+        versions: ["v1.0.0"],
+      });
+      await runCli(rootDir, ["bury", reviewer.repoDir, "--registry", registryDir]);
+      await runCli(rootDir, ["bury", writer.repoDir, "--registry", registryDir]);
+
+      const consumerDir = path.join(rootDir, "consumer-partial-fetch");
+      await initTestRepo(consumerDir);
+
+      let result = await runCli(consumerDir, [
+        "fetch",
+        "reviewer",
+        "writer",
+        "--registry",
+        registryDir,
+      ]);
+      expect(result.exitCode).toBe(0);
+
+      const writerBundlePath = path.join(
+        registryDir,
+        "skills/writer/versions/v1.0.0/skill/template.txt"
+      );
+      await fs.writeFile(writerBundlePath, "template-v1.0.0-refreshed\n", "utf8");
+      result = await runCli(rootDir, ["bury", "refresh", writerBundlePath]);
+      expect(result.exitCode).toBe(0);
+
+      result = await runCli(consumerDir, [
+        "fetch",
+        "reviewer",
+        "--registry",
+        registryDir,
+      ]);
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain("Fetched reviewer@v1.0.0");
+      expect(result.stdout).not.toContain("writer@v1.0.0");
+
+      const config = await readYamlFile<SkillpupConfig>(
+        path.join(consumerDir, "skillpup.config.yaml")
+      );
+      expect(config.skills).toEqual([
+        { name: "reviewer", version: "v1.0.0" },
+        { name: "writer", version: "v1.0.0" },
+      ]);
+
+      const lockfile = await readYamlFile<SkillpupLockfile>(
+        path.join(consumerDir, "skillpup.lock.yaml")
+      );
+      expect(lockfile.skills.map((entry) => entry.name).sort()).toEqual([
+        "reviewer",
+        "writer",
+      ]);
+      expect(
+        await fs.readFile(
+          path.join(consumerDir, ".agents/skills/writer/template.txt"),
+          "utf8"
+        )
+      ).toBe("template-v1.0.0\n");
+    },
+    TEST_TIMEOUT
+  );
+
+  it(
     "commits .gitignore on fetch --commit when skillpup adds the ignore rule",
     async () => {
       const registryDir = path.join(rootDir, "registry-fetch-commit-gitignore");
@@ -756,6 +829,117 @@ skills:
   );
 
   it(
+    "refreshes buried digests after editing a registry bundle in place",
+    async () => {
+      const registryDir = path.join(rootDir, "registry-refresh");
+      await runCli(rootDir, ["bury", "init", registryDir]);
+      await initTestRepo(registryDir);
+
+      const source = await createSkillRepo({
+        skillName: "guardian",
+        versions: ["v1.0.0"],
+      });
+      await runCli(rootDir, [
+        "bury",
+        source.repoDir,
+        "--registry",
+        registryDir,
+      ]);
+
+      const metadataPath = path.join(
+        registryDir,
+        "skills/guardian/versions/v1.0.0/metadata.yaml"
+      );
+      const indexPath = path.join(registryDir, "skills/guardian/index.yaml");
+      const bundledFilePath = path.join(
+        registryDir,
+        "skills/guardian/versions/v1.0.0/skill/template.txt"
+      );
+
+      const previousMetadata = await readYamlFile<{ digest: string }>(metadataPath);
+      await fs.writeFile(bundledFilePath, "template-v1.0.0-local-edit\n", "utf8");
+
+      const result = await runCli(rootDir, ["bury", "refresh", bundledFilePath]);
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain("Refreshed guardian@v1.0.0");
+
+      const refreshedMetadata = await readYamlFile<{
+        digest: string;
+        buriedAt: string;
+      }>(metadataPath);
+      const refreshedIndex = await readYamlFile<{
+        versions: Array<{ version: string; digest: string; buriedAt: string }>;
+      }>(indexPath);
+
+      expect(refreshedMetadata.digest).not.toBe(previousMetadata.digest);
+      expect(
+        refreshedIndex.versions.find((entry) => entry.version === "v1.0.0")?.digest
+      ).toBe(refreshedMetadata.digest);
+      expect(
+        refreshedIndex.versions.find((entry) => entry.version === "v1.0.0")?.buriedAt
+      ).toBe(refreshedMetadata.buriedAt);
+
+      const consumerDir = path.join(rootDir, "consumer-refresh");
+      await initTestRepo(consumerDir);
+      const fetchResult = await runCli(consumerDir, [
+        "fetch",
+        "guardian",
+        "--registry",
+        registryDir,
+      ]);
+      expect(fetchResult.exitCode).toBe(0);
+      expect(
+        await fs.readFile(
+          path.join(consumerDir, ".agents/skills/guardian/template.txt"),
+          "utf8"
+        )
+      ).toBe("template-v1.0.0-local-edit\n");
+    },
+    TEST_TIMEOUT
+  );
+
+  it(
+    "commits refreshed registry files on bury refresh --commit",
+    async () => {
+      const registryDir = path.join(rootDir, "registry-refresh-commit");
+      await runCli(rootDir, ["bury", "init", registryDir]);
+      await initTestRepo(registryDir);
+      await fs.writeFile(path.join(registryDir, ".gitignore"), "\n", "utf8");
+      await commitAll(registryDir, "initial");
+
+      const source = await createSkillRepo({
+        skillName: "critic",
+        versions: ["v1.0.0"],
+      });
+      await runCli(rootDir, [
+        "bury",
+        source.repoDir,
+        "--registry",
+        registryDir,
+        "--commit",
+      ]);
+
+      const bundledFilePath = path.join(
+        registryDir,
+        "skills/critic/versions/v1.0.0/skill/template.txt"
+      );
+      await fs.writeFile(bundledFilePath, "template-v1.0.0-refreshed\n", "utf8");
+
+      const result = await runCli(rootDir, [
+        "bury",
+        "refresh",
+        bundledFilePath,
+        "--commit",
+      ]);
+      expect(result.exitCode).toBe(0);
+
+      const subject = await runGitCapture(["log", "-1", "--pretty=%s"], registryDir);
+      expect(subject).toBe("chore(skillpup-registry): refresh critic@v1.0.0");
+    },
+    TEST_TIMEOUT
+  );
+
+  it(
     "fails fetch --commit when unrelated staged changes exist",
     async () => {
       const registryDir = path.join(rootDir, "registry-fetch-fail");
@@ -834,6 +1018,84 @@ skills:
       result = await runCli(consumerDir, ["fetch"]);
       expect(result.exitCode).toBe(1);
       expect(result.stderr).toContain("Digest mismatch");
+    },
+    TEST_TIMEOUT
+  );
+
+  it(
+    "requires --force to accept a refreshed digest for an explicitly requested skill",
+    async () => {
+      const registryDir = path.join(rootDir, "registry-refresh-fetch");
+      await runCli(rootDir, ["bury", "init", registryDir]);
+      await initTestRepo(registryDir);
+
+      const source = await createSkillRepo({
+        skillName: "django-ninja-best-practices",
+        versions: ["latest"],
+      });
+      await runCli(rootDir, [
+        "bury",
+        source.repoDir,
+        "--registry",
+        registryDir,
+        "--version",
+        "latest",
+      ]);
+
+      const consumerDir = path.join(rootDir, "consumer-refresh-fetch");
+      await initTestRepo(consumerDir);
+
+      let result = await runCli(consumerDir, [
+        "fetch",
+        "django-ninja-best-practices",
+        "--registry",
+        registryDir,
+      ]);
+      expect(result.exitCode).toBe(0);
+
+      const lockfilePath = path.join(consumerDir, "skillpup.lock.yaml");
+      const previousLockfile = await readYamlFile<SkillpupLockfile>(lockfilePath);
+      const bundledFilePath = path.join(
+        registryDir,
+        "skills/django-ninja-best-practices/versions/latest/skill/template.txt"
+      );
+
+      await fs.writeFile(bundledFilePath, "template-latest-refreshed\n", "utf8");
+      result = await runCli(rootDir, ["bury", "refresh", bundledFilePath]);
+      expect(result.exitCode).toBe(0);
+
+      result = await runCli(consumerDir, [
+        "fetch",
+        "django-ninja-best-practices",
+        "--registry",
+        registryDir,
+      ]);
+      expect(result.exitCode).toBe(1);
+      expect(result.stderr).toContain("Digest mismatch");
+
+      result = await runCli(consumerDir, [
+        "fetch",
+        "django-ninja-best-practices",
+        "--registry",
+        registryDir,
+        "--force",
+      ]);
+      expect(result.exitCode).toBe(0);
+
+      const updatedLockfile = await readYamlFile<SkillpupLockfile>(lockfilePath);
+      expect(updatedLockfile.skills[0]?.version).toBe("latest");
+      expect(updatedLockfile.skills[0]?.digest).not.toBe(
+        previousLockfile.skills[0]?.digest
+      );
+      expect(
+        await fs.readFile(
+          path.join(
+            consumerDir,
+            ".agents/skills/django-ninja-best-practices/template.txt"
+          ),
+          "utf8"
+        )
+      ).toBe("template-latest-refreshed\n");
     },
     TEST_TIMEOUT
   );

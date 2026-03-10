@@ -4,6 +4,7 @@ import path from "node:path";
 import { z } from "zod";
 import type {
   RegistryRootMetadata,
+  RefreshResult,
   SkillIndex,
   SkillIndexVersion,
   SkillVersionMetadata,
@@ -210,6 +211,58 @@ export class GitBundleRegistryBackend {
       metadata,
       indexPath: this.getIndexPath(skillName),
       versionPath,
+    };
+  }
+
+  async refreshVersion(skillName: string, version: string): Promise<RefreshResult> {
+    validateSkillName(skillName);
+
+    const versionPath = resolveInside(this.rootPath, canonicalRegistryPath(skillName, version));
+    if (!(await pathExists(versionPath))) {
+      throw new Error(`Missing version ${skillName}@${version} in registry`);
+    }
+
+    const metadataPath = this.getMetadataPath(skillName, version);
+    const bundlePath = this.getBundlePath(skillName, version);
+    const skillMarkerPath = path.join(bundlePath, "SKILL.md");
+    if (!(await pathExists(skillMarkerPath))) {
+      throw new Error(`Buried version ${skillName}@${version} is missing SKILL.md`);
+    }
+
+    const metadata = await this.readVersionMetadata(skillName, version);
+    const digest = await computeDirectoryDigest(bundlePath);
+    if (digest === metadata.digest) {
+      return {
+        metadata,
+        indexPath: this.getIndexPath(skillName),
+        versionPath,
+        digestChanged: false,
+      };
+    }
+
+    const refreshedMetadata: SkillVersionMetadata = {
+      ...metadata,
+      digest,
+      buriedAt: new Date().toISOString(),
+    };
+    await writeYamlFile(metadataPath, refreshedMetadata);
+
+    const index = await this.readOrCreateIndex(skillName);
+    const versionEntry = index.versions.find((entry) => entry.version === version);
+    if (!versionEntry) {
+      throw new Error(`Missing index entry for ${skillName}@${version}`);
+    }
+
+    versionEntry.digest = digest;
+    versionEntry.buriedAt = refreshedMetadata.buriedAt;
+    index.versions = sortIndexVersions(index.versions);
+    await writeYamlFile(this.getIndexPath(skillName), index);
+
+    return {
+      metadata: refreshedMetadata,
+      indexPath: this.getIndexPath(skillName),
+      versionPath,
+      digestChanged: true,
     };
   }
 
