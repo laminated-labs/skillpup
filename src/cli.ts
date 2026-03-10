@@ -1,6 +1,6 @@
 import { createRequire } from "node:module";
 import { Command } from "commander";
-import { buryInit, burySkill } from "./bury.js";
+import { buryInit, burySkill, refreshBuriedSkill } from "./bury.js";
 import { fetchSkills } from "./fetch.js";
 import { runWithSpinner } from "./progress.js";
 
@@ -24,6 +24,10 @@ export async function runCli(argv: string[] = process.argv) {
     .option("--all", "When used with --generate, select every available registry skill")
     .option("--merge", "When used with --generate, merge generated skills into the existing config")
     .option("--replace", "When used with --generate, replace the existing config skill list")
+    .option(
+      "--force",
+      "Accept digest changes for explicitly requested skills and rewrite their lockfile entries"
+    )
     .option("--commit", "Commit config and lockfile changes")
     .action(async (skills: string[], options) => {
       if (options.merge && options.replace) {
@@ -35,6 +39,7 @@ export async function runCli(argv: string[] = process.argv) {
           skillSpecs: skills,
           registry: options.registry,
           commit: options.commit,
+          force: options.force,
           generate: options.generate,
           all: options.all,
           mergeStrategy: options.replace ? "replace" : options.merge ? "merge" : undefined,
@@ -95,6 +100,31 @@ export async function runCli(argv: string[] = process.argv) {
         buryInit({ directory })
       );
       console.log(`Ready to bury bones in ${result.registryDir}`);
+    });
+
+  bury
+    .command("refresh")
+    .description("Refresh digest metadata for an already-buried skill version")
+    .argument(
+      "<target-folder>",
+      "Path to a buried version, its skill directory, or a file inside it"
+    )
+    .option(
+      "--registry <local-path>",
+      "Local path to the registry; inferred from the target when omitted"
+    )
+    .option("--commit", "Commit registry changes")
+    .action(async (targetFolder: string, options) => {
+      const result = await runWithSpinner("Refreshing buried skill...", () =>
+        refreshBuriedSkill({
+          targetPath: targetFolder,
+          registry: options.registry,
+          commit: options.commit,
+        })
+      );
+
+      const verb = result.digestChanged ? "Refreshed" : "Verified";
+      console.log(`${verb} ${result.metadata.name}@${result.metadata.version}`);
     });
 
   await program.parseAsync(argv);

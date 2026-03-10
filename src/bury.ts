@@ -1,7 +1,7 @@
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import type { BuryAddResult } from "./types.js";
+import type { BuryAddResult, RefreshResult } from "./types.js";
 import { openRegistryForWrite, GitBundleRegistryBackend } from "./git-bundle-backend.js";
 import {
   checkoutRef,
@@ -20,10 +20,13 @@ import {
 } from "./git.js";
 import { pathExists } from "./fs-utils.js";
 import {
+  REGISTRY_FILE_BASENAME,
+  canonicalRegistryPath,
   compareSemverDescending,
   formatSkillRef,
   parseSemverLike,
   resolveInside,
+  toPosix,
   validateSkillName,
 } from "./utils.js";
 import {
@@ -42,6 +45,55 @@ function deriveDefaultSkillName(sourceGitUrl: string, skillPath?: string) {
     .replace(/\/+$/, "")
     .replace(/\.git$/, "");
   return path.posix.basename(normalizedSource);
+}
+
+async function findContainingRegistryRoot(targetPath: string) {
+  let currentPath = path.resolve(targetPath);
+  const stats = await fs.stat(currentPath).catch(() => null);
+  if (stats?.isFile()) {
+    currentPath = path.dirname(currentPath);
+  }
+
+  while (true) {
+    const markerPath = path.join(currentPath, REGISTRY_FILE_BASENAME);
+    if (await pathExists(markerPath)) {
+      return currentPath;
+    }
+
+    const parentPath = path.dirname(currentPath);
+    if (parentPath === currentPath) {
+      return null;
+    }
+    currentPath = parentPath;
+  }
+}
+
+function inferBuriedVersionFromTarget(targetPath: string, registryRoot: string) {
+  let currentPath = path.resolve(targetPath);
+
+  while (true) {
+    const relativePath = toPosix(path.relative(registryRoot, currentPath));
+    const match = relativePath.match(
+      /^skills\/([^/]+)\/versions\/([^/]+)(?:\/skill(?:\/.*)?)?$/
+    );
+    if (match) {
+      const [, skillName, version] = match;
+      return {
+        skillName,
+        version,
+        versionPath: resolveInside(registryRoot, canonicalRegistryPath(skillName, version)),
+      };
+    }
+
+    if (currentPath === registryRoot) {
+      break;
+    }
+    currentPath = path.dirname(currentPath);
+  }
+
+  throw new Error(
+    `Target is not inside a buried skill version: ${targetPath}`
+  );
 }
 
 export async function buryInit(options?: { directory?: string; cwd?: string }) {
@@ -166,4 +218,49 @@ export async function burySkill(options: {
   } finally {
     await fs.rm(tempRoot, { recursive: true, force: true });
   }
+}
+
+export async function refreshBuriedSkill(options: {
+  targetPath: string;
+  registry?: string;
+  commit?: boolean;
+  cwd?: string;
+}): Promise<RefreshResult> {
+  const cwd = options.cwd ?? process.cwd();
+  const absoluteTargetPath = path.resolve(cwd, options.targetPath);
+  if (!(await pathExists(absoluteTargetPath))) {
+    throw new Error(`Target path does not exist: ${options.targetPath}`);
+  }
+
+  const registryRoot = options.registry
+    ? path.resolve(cwd, options.registry)
+    : await findContainingRegistryRoot(absoluteTargetPath);
+  if (!registryRoot) {
+    throw new Error(
+      `Unable to find a skillpup registry for ${options.targetPath}. Pass --registry explicitly.`
+    );
+  }
+
+  const backend = await openRegistryForWrite(registryRoot);
+  const target = inferBuriedVersionFromTarget(absoluteTargetPath, registryRoot);
+  const result = await backend.refreshVersion(target.skillName, target.version);
+
+  if (options.commit && result.digestChanged) {
+    const gitRoot = await getGitRoot(registryRoot);
+    const allowedPaths = [
+      await toGitRelativePath(gitRoot, result.indexPath),
+      await toGitRelativePath(gitRoot, result.versionPath),
+    ];
+    await ensureNoUnrelatedStagedChanges(gitRoot, allowedPaths);
+    await stagePaths(gitRoot, allowedPaths);
+    await commitChanges(
+      gitRoot,
+      `chore(skillpup-registry): refresh ${formatSkillRef(
+        result.metadata.name,
+        result.metadata.version
+      )}`
+    );
+  }
+
+  return result;
 }

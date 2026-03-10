@@ -66,3 +66,10 @@ export type BuryAddResult = {
   indexPath: string;
   versionPath: string;
 };
+
+export type RefreshResult = {
+  metadata: SkillVersionMetadata;
+  indexPath: string;
+  versionPath: string;
+  digestChanged: boolean;
+};
