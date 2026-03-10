@@ -1,4 +1,5 @@
 import fs from "node:fs/promises";
+import { createRequire } from "node:module";
 import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { SkillpupConfig, SkillpupLockfile } from "../src/types.js";
@@ -15,6 +16,8 @@ import {
 } from "./helpers.js";
 
 const TEST_TIMEOUT = 120_000;
+const require = createRequire(import.meta.url);
+const packageJson = require("../package.json") as { version: string };
 
 describe("skillpup integration", () => {
   let rootDir: string;
@@ -42,6 +45,13 @@ describe("skillpup integration", () => {
     },
     TEST_TIMEOUT
   );
+
+  it("prints the CLI version with --version", async () => {
+    const result = await runCli(rootDir, ["--version"]);
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout.trim()).toBe(packageJson.version);
+  });
 
   it(
     "buries a root skill and fetches the highest semver version into a consumer repo",

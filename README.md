@@ -37,6 +37,8 @@ Or with `pnpm`:
 pnpm add -g skillpup
 ```
 
+Check the installed CLI version with `skillpup --version`.
+
 ### Local Development Install
 
 ```bash
