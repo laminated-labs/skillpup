@@ -116,6 +116,71 @@ describe("skillpup integration", () => {
   );
 
   it(
+    "strips top-level .git metadata when burying a repo-root skill",
+    async () => {
+      const registryDir = path.join(rootDir, "registry-strip-git");
+      await runCli(rootDir, ["bury", "init", registryDir]);
+      await initTestRepo(registryDir);
+
+      const source = await createSkillRepo({
+        skillName: "courier-skills",
+        versions: ["v1.0.0"],
+      });
+
+      const result = await runCli(rootDir, [
+        "bury",
+        source.repoDir,
+        "--registry",
+        registryDir,
+      ]);
+
+      expect(result.exitCode).toBe(0);
+      expect(
+        await fileExists(
+          path.join(
+            registryDir,
+            "skills/courier-skills/versions/v1.0.0/skill/.git"
+          )
+        )
+      ).toBe(false);
+    },
+    TEST_TIMEOUT
+  );
+
+  it(
+    "does not install nested git metadata when fetching a repo-root skill",
+    async () => {
+      const registryDir = path.join(rootDir, "registry-fetch-no-nested-git");
+      await runCli(rootDir, ["bury", "init", registryDir]);
+      await initTestRepo(registryDir);
+
+      const source = await createSkillRepo({
+        skillName: "courier-skills",
+        versions: ["v1.0.0"],
+      });
+      await runCli(rootDir, ["bury", source.repoDir, "--registry", registryDir]);
+
+      const consumerDir = path.join(rootDir, "consumer-fetch-no-nested-git");
+      await initTestRepo(consumerDir);
+
+      const result = await runCli(consumerDir, [
+        "fetch",
+        "courier-skills",
+        "--registry",
+        registryDir,
+      ]);
+
+      expect(result.exitCode).toBe(0);
+      expect(
+        await fileExists(
+          path.join(consumerDir, ".agents/skills/courier-skills/.git")
+        )
+      ).toBe(false);
+    },
+    TEST_TIMEOUT
+  );
+
+  it(
     "supports burying a nested skill via --path",
     async () => {
       const registryDir = path.join(rootDir, "registry-nested");
@@ -1018,6 +1083,50 @@ skills:
       result = await runCli(consumerDir, ["fetch"]);
       expect(result.exitCode).toBe(1);
       expect(result.stderr).toContain("Digest mismatch");
+    },
+    TEST_TIMEOUT
+  );
+
+  it(
+    "explains recovery when bundled files change after publish",
+    async () => {
+      const registryDir = path.join(rootDir, "registry-installed-digest-mismatch");
+      await runCli(rootDir, ["bury", "init", registryDir]);
+      await initTestRepo(registryDir);
+
+      const source = await createSkillRepo({
+        skillName: "courier-skills",
+        versions: ["v1.0.0"],
+      });
+      await runCli(rootDir, [
+        "bury",
+        source.repoDir,
+        "--registry",
+        registryDir,
+      ]);
+
+      const consumerDir = path.join(rootDir, "consumer-installed-digest-mismatch");
+      await initTestRepo(consumerDir);
+
+      let result = await runCli(consumerDir, [
+        "fetch",
+        "courier-skills",
+        "--registry",
+        registryDir,
+      ]);
+      expect(result.exitCode).toBe(0);
+
+      const bundledFilePath = path.join(
+        registryDir,
+        "skills/courier-skills/versions/v1.0.0/skill/template.txt"
+      );
+      await fs.writeFile(bundledFilePath, "template-v1.0.0-mutated\n", "utf8");
+
+      result = await runCli(consumerDir, ["fetch"]);
+      expect(result.exitCode).toBe(1);
+      expect(result.stderr).toContain("The buried bundle no longer matches its recorded digest");
+      expect(result.stderr).toContain("Republish this skill as a new version");
+      expect(result.stderr).toContain('skillpup bury refresh <path>');
     },
     TEST_TIMEOUT
   );

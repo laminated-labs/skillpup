@@ -30,6 +30,10 @@ const registryRootSchema = z.object({
   backend: z.literal("git-bundle"),
 });
 
+function shouldIgnorePublishedEntry(relativePath: string) {
+  return relativePath === ".git";
+}
+
 const indexSchema = z.object({
   name: z.string().min(1),
   versions: z
@@ -180,9 +184,13 @@ export class GitBundleRegistryBackend {
 
     const bundlePath = path.join(versionPath, "skill");
     await ensureDir(versionPath);
-    await copyDirectoryStrict(sourceDir, bundlePath);
+    await copyDirectoryStrict(sourceDir, bundlePath, {
+      shouldIgnore: shouldIgnorePublishedEntry,
+    });
 
-    const digest = await computeDirectoryDigest(bundlePath);
+    const digest = await computeDirectoryDigest(bundlePath, {
+      shouldIgnore: shouldIgnorePublishedEntry,
+    });
     const metadata: SkillVersionMetadata = {
       name: skillName,
       version,

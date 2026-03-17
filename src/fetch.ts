@@ -347,7 +347,9 @@ export async function fetchSkills(options: FetchOptions = {}): Promise<FetchResu
 
       const installedDigest = await computeDirectoryDigest(destinationPath);
       if (installedDigest !== metadata.digest) {
-        throw new Error(`Installed digest mismatch for ${skill.name}@${skill.version}.`);
+        throw new Error(
+          `Installed digest mismatch for ${skill.name}@${skill.version}. The buried bundle no longer matches its recorded digest, likely because the registry files were edited after publish. Republish this skill as a new version, or run "skillpup bury refresh <path>" if the in-place registry edit was intentional.`
+        );
       }
 
       installed.push(metadata);

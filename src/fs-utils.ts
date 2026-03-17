@@ -7,6 +7,10 @@ type TreeEntry =
   | { kind: "dir"; relativePath: string; absolutePath: string; mode: number }
   | { kind: "file"; relativePath: string; absolutePath: string; mode: number };
 
+type TreeOptions = {
+  shouldIgnore?: (relativePath: string) => boolean;
+};
+
 function normalizeMode(mode: number) {
   return mode & 0o7777;
 }
@@ -35,9 +39,10 @@ async function assertRootIsNotSymlink(rootDir: string) {
   }
 }
 
-async function collectTree(rootDir: string): Promise<TreeEntry[]> {
+async function collectTree(rootDir: string, options?: TreeOptions): Promise<TreeEntry[]> {
   await assertRootIsNotSymlink(rootDir);
   const entries: TreeEntry[] = [];
+  const shouldIgnore = options?.shouldIgnore;
 
   async function walk(relativeDir: string): Promise<void> {
     const absoluteDir = relativeDir
@@ -50,6 +55,9 @@ async function collectTree(rootDir: string): Promise<TreeEntry[]> {
       const relativePath = relativeDir
         ? path.posix.join(relativeDir, entry.name)
         : entry.name;
+      if (shouldIgnore?.(relativePath)) {
+        continue;
+      }
       const absolutePath = resolveInside(rootDir, relativePath);
 
       if (entry.isSymbolicLink()) {
@@ -78,8 +86,12 @@ async function collectTree(rootDir: string): Promise<TreeEntry[]> {
   return entries;
 }
 
-export async function copyDirectoryStrict(sourceDir: string, destinationDir: string) {
-  const entries = await collectTree(sourceDir);
+export async function copyDirectoryStrict(
+  sourceDir: string,
+  destinationDir: string,
+  options?: TreeOptions
+) {
+  const entries = await collectTree(sourceDir, options);
   await ensureDir(destinationDir);
   const directoriesToChmod: TreeEntry[] = [];
 
@@ -102,8 +114,8 @@ export async function copyDirectoryStrict(sourceDir: string, destinationDir: str
   }
 }
 
-export async function computeDirectoryDigest(rootDir: string) {
-  const entries = await collectTree(rootDir);
+export async function computeDirectoryDigest(rootDir: string, options?: TreeOptions) {
+  const entries = await collectTree(rootDir, options);
   const hash = createHash("sha256");
 
   for (const entry of entries) {
