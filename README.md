@@ -271,6 +271,7 @@ Options:
 Behavior:
 
 - the selected skill directory must contain `SKILL.md`
+- top-level source repo metadata such as `.git` is stripped from the stored bundle
 - if `--ref` is omitted, the highest semver-like tag is preferred
 - if no semver-like tag exists, the source branch or commit is used
 - if `--version` is omitted, the selected tag or commit becomes the stored version
@@ -300,6 +301,7 @@ Behavior:
 - fetch detects registry mutations after locking and fails on digest mismatches
 - digest checks include file contents and permission-sensitive filesystem metadata
 - repeated fetches reconstruct the installed skill directory from the registry bundle
+- `bury` strips top-level `.git` metadata from published repo-root skills so consumers do not receive nested git repositories
 - `bury refresh` intentionally mutates an existing buried version in place; consumers locked to the older digest will keep failing until their lockfile is updated
 - `fetch <skill-name> --force` accepts a refreshed digest for that named skill and rewrites its lockfile entry
 
@@ -332,6 +334,13 @@ The directory you publish with `bury` must contain a `SKILL.md` at its root. Use
 ### Running from a nested directory
 
 `fetch` searches parent directories for `skillpup` config files, so you can run it from subdirectories inside a consumer repository as long as the config exists higher up the tree.
+
+### `Installed digest mismatch`
+
+The bundled files in the registry no longer match the digest recorded in `metadata.yaml`.
+
+- republish the skill as a new version if the bundle changed
+- or run `skillpup bury refresh <path>` if you intentionally edited the existing buried bundle in place
 
 ### Skills directory detection
 
