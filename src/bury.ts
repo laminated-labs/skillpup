@@ -113,6 +113,11 @@ async function selectBuriedArtifact(
   tempRoot: string,
   explicitName?: string
 ) {
+  const sourceLstat = await fs.lstat(selectedPath);
+  if (sourceLstat.isSymbolicLink()) {
+    throw new Error(`Symlinked subagent files are not supported: ${selectedPath}`);
+  }
+
   const sourceStats = await fs.stat(selectedPath);
   if (sourceStats.isDirectory()) {
     const skillMarkerPath = path.join(selectedPath, "SKILL.md");

@@ -280,6 +280,46 @@ describe("skillpup integration", () => {
   );
 
   it(
+    "rejects burying a symlinked subagent manifest",
+    async () => {
+      const registryDir = path.join(rootDir, "registry-subagent-symlink-error");
+      await runCli(rootDir, ["bury", "init", registryDir]);
+      await initTestRepo(registryDir);
+
+      const repoDir = path.join(rootDir, "subagent-symlink-source");
+      await initTestRepo(repoDir);
+      await fs.mkdir(path.join(repoDir, ".codex", "agents"), { recursive: true });
+      await fs.writeFile(
+        path.join(repoDir, "reviewer-source.toml"),
+        `name = "reviewer"
+description = "Version v1.0.0"
+developer_instructions = "Follow reviewer v1.0.0"
+`,
+        "utf8"
+      );
+      await fs.symlink(
+        "../../reviewer-source.toml",
+        path.join(repoDir, ".codex", "agents", "reviewer.toml")
+      );
+      await commitAll(repoDir, "release v1.0.0");
+      await runGit(["tag", "v1.0.0"], repoDir);
+
+      const result = await runCli(rootDir, [
+        "bury",
+        repoDir,
+        "--path",
+        ".codex/agents/reviewer.toml",
+        "--registry",
+        registryDir,
+      ]);
+
+      expect(result.exitCode).toBe(1);
+      expect(result.stderr).toContain("Symlinked subagent files are not supported");
+    },
+    TEST_TIMEOUT
+  );
+
+  it(
     "adds the effective skillsDir to the repo .gitignore on fetch",
     async () => {
       const registryDir = path.join(rootDir, "registry-gitignore-bootstrap");
@@ -415,6 +455,62 @@ describe("skillpup integration", () => {
       );
       expect(
         await fileExists(path.join(consumerDir, ".agents/skills/reviewer/SKILL.md"))
+      ).toBe(false);
+    },
+    TEST_TIMEOUT
+  );
+
+  it(
+    "fails instead of switching kinds when a configured artifact kind is missing from the registry",
+    async () => {
+      const registryDir = path.join(rootDir, "registry-configured-kind-missing");
+      await runCli(rootDir, ["bury", "init", registryDir]);
+      await initTestRepo(registryDir);
+
+      const skill = await createSkillRepo({
+        skillName: "reviewer",
+        versions: ["v1.0.0"],
+      });
+      const subagent = await createSubagentRepo({
+        subagentName: "reviewer",
+        versions: ["v1.0.0"],
+      });
+      await runCli(rootDir, ["bury", skill.repoDir, "--registry", registryDir]);
+      await runCli(rootDir, [
+        "bury",
+        subagent.repoDir,
+        "--path",
+        subagent.subagentPath,
+        "--registry",
+        registryDir,
+      ]);
+
+      const consumerDir = path.join(rootDir, "consumer-configured-kind-missing");
+      await initTestRepo(consumerDir);
+
+      let result = await runCli(consumerDir, [
+        "fetch",
+        "skill:reviewer",
+        "--registry",
+        registryDir,
+      ]);
+      expect(result.exitCode).toBe(0);
+      expect(
+        await fileExists(path.join(consumerDir, ".agents/skills/reviewer/SKILL.md"))
+      ).toBe(true);
+
+      await fs.rm(path.join(registryDir, "skills", "reviewer"), {
+        recursive: true,
+        force: true,
+      });
+
+      result = await runCli(consumerDir, ["fetch", "reviewer"]);
+      expect(result.exitCode).toBe(1);
+      expect(result.stderr).toContain(
+        'Skill "reviewer" is configured for this project but was not found in the registry.'
+      );
+      expect(
+        await fileExists(path.join(consumerDir, ".codex/agents/reviewer.toml"))
       ).toBe(false);
     },
     TEST_TIMEOUT

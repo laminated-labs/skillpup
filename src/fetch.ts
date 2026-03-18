@@ -121,10 +121,6 @@ function buildFetchCommitMessage(
     return `chore(skillpup): fetch ${refs.join(", ")}`;
   }
 
-  if (removed.length > 0) {
-    return "chore(skillpup): fetch sync";
-  }
-
   return "chore(skillpup): fetch sync";
 }
 
@@ -244,6 +240,13 @@ async function resolveRequestedKind(
 
   if (configuredKind && availableKinds.includes(configuredKind)) {
     return configuredKind;
+  }
+
+  if (configuredKind) {
+    const kindLabel = configuredKind === "skill" ? "Skill" : "Subagent";
+    throw new Error(
+      `${kindLabel} "${requested.name}" is configured for this project but was not found in the registry.`
+    );
   }
 
   if (availableKinds.length === 1) {
