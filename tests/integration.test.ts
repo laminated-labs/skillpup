@@ -6,6 +6,7 @@ import type { SkillpupConfig, SkillpupLockfile } from "../src/types.js";
 import {
   commitAll,
   createSkillRepo,
+  createSubagentRepo,
   fileExists,
   initTestRepo,
   makeTempDir,
@@ -42,6 +43,7 @@ describe("skillpup integration", () => {
       );
       expect(await fileExists(path.join(registryDir, "README.md"))).toBe(true);
       expect(await fileExists(path.join(registryDir, "skills"))).toBe(true);
+      expect(await fileExists(path.join(registryDir, "subagents"))).toBe(true);
     },
     TEST_TIMEOUT
   );
@@ -216,6 +218,68 @@ describe("skillpup integration", () => {
   );
 
   it(
+    "buries a subagent from an explicit TOML file path",
+    async () => {
+      const registryDir = path.join(rootDir, "registry-subagent-bury");
+      await runCli(rootDir, ["bury", "init", registryDir]);
+      await initTestRepo(registryDir);
+
+      const source = await createSubagentRepo({
+        subagentName: "reviewer",
+        versions: ["v1.0.0"],
+        extraToml: `model = "gpt-5.4"\n[mcp_servers.docs]\ncommand = "echo"`,
+      });
+
+      const result = await runCli(rootDir, [
+        "bury",
+        source.repoDir,
+        "--path",
+        source.subagentPath,
+        "--registry",
+        registryDir,
+      ]);
+
+      expect(result.exitCode).toBe(0);
+      const bundledPath = path.join(
+        registryDir,
+        "subagents/reviewer/versions/v1.0.0/subagent/reviewer.toml"
+      );
+      expect(await fileExists(bundledPath)).toBe(true);
+      const bundledContents = await fs.readFile(bundledPath, "utf8");
+      expect(bundledContents).toContain('model = "gpt-5.4"');
+      expect(bundledContents).toContain("[mcp_servers.docs]");
+    },
+    TEST_TIMEOUT
+  );
+
+  it(
+    "rejects burying a repo root that is not a skill root or direct subagent file target",
+    async () => {
+      const registryDir = path.join(rootDir, "registry-subagent-root-error");
+      await runCli(rootDir, ["bury", "init", registryDir]);
+      await initTestRepo(registryDir);
+
+      const source = await createSubagentRepo({
+        subagentName: "reviewer",
+        versions: ["v1.0.0"],
+      });
+
+      const result = await runCli(rootDir, [
+        "bury",
+        source.repoDir,
+        "--registry",
+        registryDir,
+      ]);
+
+      expect(result.exitCode).toBe(1);
+      expect(result.stderr).toContain(
+        "Selected path must be a skill directory containing SKILL.md or a subagent TOML file"
+      );
+    },
+    TEST_TIMEOUT
+  );
+
+  it(
     "adds the effective skillsDir to the repo .gitignore on fetch",
     async () => {
       const registryDir = path.join(rootDir, "registry-gitignore-bootstrap");
@@ -241,6 +305,117 @@ describe("skillpup integration", () => {
       expect(await fs.readFile(path.join(consumerDir, ".gitignore"), "utf8")).toBe(
         "/.agents/skills/\n"
       );
+    },
+    TEST_TIMEOUT
+  );
+
+  it(
+    "fetches a subagent into .codex/agents and tracks it in config and lockfile",
+    async () => {
+      const registryDir = path.join(rootDir, "registry-fetch-subagent");
+      await runCli(rootDir, ["bury", "init", registryDir]);
+      await initTestRepo(registryDir);
+
+      const source = await createSubagentRepo({
+        subagentName: "reviewer",
+        versions: ["v1.0.0"],
+      });
+      await runCli(rootDir, [
+        "bury",
+        source.repoDir,
+        "--path",
+        source.subagentPath,
+        "--registry",
+        registryDir,
+      ]);
+
+      const consumerDir = path.join(rootDir, "consumer-fetch-subagent");
+      await initTestRepo(consumerDir);
+
+      const result = await runCli(consumerDir, [
+        "fetch",
+        "reviewer",
+        "--registry",
+        registryDir,
+      ]);
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain("subagent:reviewer@v1.0.0");
+
+      const config = await readYamlFile<SkillpupConfig>(
+        path.join(consumerDir, "skillpup.config.yaml")
+      );
+      const lockfile = await readYamlFile<SkillpupLockfile>(
+        path.join(consumerDir, "skillpup.lock.yaml")
+      );
+
+      expect(config.subagentsDir).toBe(".codex/agents");
+      expect(config.subagents).toEqual([{ name: "reviewer", version: "v1.0.0" }]);
+      expect(lockfile.subagents[0]?.name).toBe("reviewer");
+      expect(lockfile.subagents[0]?.version).toBe("v1.0.0");
+      expect(
+        await fileExists(path.join(consumerDir, ".codex/agents/reviewer.toml"))
+      ).toBe(true);
+      expect(await fs.readFile(path.join(consumerDir, ".gitignore"), "utf8")).toContain(
+        "/.codex/agents/\n"
+      );
+    },
+    TEST_TIMEOUT
+  );
+
+  it(
+    "prefers the configured kind when the same name exists as both a skill and a subagent",
+    async () => {
+      const registryDir = path.join(rootDir, "registry-name-collision");
+      await runCli(rootDir, ["bury", "init", registryDir]);
+      await initTestRepo(registryDir);
+
+      const skill = await createSkillRepo({
+        skillName: "reviewer",
+        versions: ["v1.0.0"],
+      });
+      const subagent = await createSubagentRepo({
+        subagentName: "reviewer",
+        versions: ["v1.0.0"],
+      });
+      await runCli(rootDir, ["bury", skill.repoDir, "--registry", registryDir]);
+      await runCli(rootDir, [
+        "bury",
+        subagent.repoDir,
+        "--path",
+        subagent.subagentPath,
+        "--registry",
+        registryDir,
+      ]);
+
+      const consumerDir = path.join(rootDir, "consumer-name-collision");
+      await initTestRepo(consumerDir);
+
+      let result = await runCli(consumerDir, [
+        "fetch",
+        "reviewer",
+        "--registry",
+        registryDir,
+      ]);
+      expect(result.exitCode).toBe(1);
+      expect(result.stderr).toContain("exists as both a skill and a subagent");
+
+      result = await runCli(consumerDir, [
+        "fetch",
+        "subagent:reviewer",
+        "--registry",
+        registryDir,
+      ]);
+      expect(result.exitCode).toBe(0);
+
+      result = await runCli(consumerDir, ["fetch", "reviewer"]);
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain("subagent:reviewer@v1.0.0");
+      expect(await fileExists(path.join(consumerDir, ".codex/agents/reviewer.toml"))).toBe(
+        true
+      );
+      expect(
+        await fileExists(path.join(consumerDir, ".agents/skills/reviewer/SKILL.md"))
+      ).toBe(false);
     },
     TEST_TIMEOUT
   );
@@ -1125,7 +1300,7 @@ skills:
       result = await runCli(consumerDir, ["fetch"]);
       expect(result.exitCode).toBe(1);
       expect(result.stderr).toContain("The buried bundle no longer matches its recorded digest");
-      expect(result.stderr).toContain("Republish this skill as a new version");
+      expect(result.stderr).toContain("Republish this artifact as a new version");
       expect(result.stderr).toContain('skillpup bury refresh <path>');
     },
     TEST_TIMEOUT
@@ -1205,6 +1380,89 @@ skills:
           "utf8"
         )
       ).toBe("template-latest-refreshed\n");
+    },
+    TEST_TIMEOUT
+  );
+
+  it(
+    "requires --force to accept a refreshed digest for an explicitly requested subagent",
+    async () => {
+      const registryDir = path.join(rootDir, "registry-refresh-fetch-subagent");
+      await runCli(rootDir, ["bury", "init", registryDir]);
+      await initTestRepo(registryDir);
+
+      const source = await createSubagentRepo({
+        subagentName: "reviewer",
+        versions: ["latest"],
+        extraToml: 'model = "gpt-5.4"',
+      });
+      await runCli(rootDir, [
+        "bury",
+        source.repoDir,
+        "--path",
+        source.subagentPath,
+        "--registry",
+        registryDir,
+        "--version",
+        "latest",
+      ]);
+
+      const consumerDir = path.join(rootDir, "consumer-refresh-fetch-subagent");
+      await initTestRepo(consumerDir);
+
+      let result = await runCli(consumerDir, [
+        "fetch",
+        "subagent:reviewer",
+        "--registry",
+        registryDir,
+      ]);
+      expect(result.exitCode).toBe(0);
+
+      const lockfilePath = path.join(consumerDir, "skillpup.lock.yaml");
+      const previousLockfile = await readYamlFile<SkillpupLockfile>(lockfilePath);
+      const bundledFilePath = path.join(
+        registryDir,
+        "subagents/reviewer/versions/latest/subagent/reviewer.toml"
+      );
+
+      await fs.writeFile(
+        bundledFilePath,
+        `name = "reviewer"
+description = "Version latest"
+developer_instructions = "Follow reviewer latest refreshed"
+model = "gpt-5.4"
+`,
+        "utf8"
+      );
+      result = await runCli(rootDir, ["bury", "refresh", bundledFilePath]);
+      expect(result.exitCode).toBe(0);
+
+      result = await runCli(consumerDir, [
+        "fetch",
+        "subagent:reviewer",
+        "--registry",
+        registryDir,
+      ]);
+      expect(result.exitCode).toBe(1);
+      expect(result.stderr).toContain("Digest mismatch");
+
+      result = await runCli(consumerDir, [
+        "fetch",
+        "subagent:reviewer",
+        "--registry",
+        registryDir,
+        "--force",
+      ]);
+      expect(result.exitCode).toBe(0);
+
+      const updatedLockfile = await readYamlFile<SkillpupLockfile>(lockfilePath);
+      expect(updatedLockfile.subagents[0]?.version).toBe("latest");
+      expect(updatedLockfile.subagents[0]?.digest).not.toBe(
+        previousLockfile.subagents[0]?.digest
+      );
+      expect(
+        await fs.readFile(path.join(consumerDir, ".codex/agents/reviewer.toml"), "utf8")
+      ).toContain("refreshed");
     },
     TEST_TIMEOUT
   );

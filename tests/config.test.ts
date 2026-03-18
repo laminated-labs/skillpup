@@ -31,7 +31,9 @@ skills:
 
     const loaded = await loadProjectConfig(tempDir);
     expect(loaded?.config.skillsDir).toBe(".agents/skills");
+    expect(loaded?.config.subagentsDir).toBe(".codex/agents");
     expect(loaded?.config.skills[0]?.name).toBe("reviewer");
+    expect(loaded?.config.subagents).toEqual([]);
   });
 
   it("returns null when no config is present", async () => {
