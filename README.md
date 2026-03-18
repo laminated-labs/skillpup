@@ -321,7 +321,7 @@ Behavior:
 
 ### `skillpup bury refresh <target-folder>`
 
-Refreshes the digest metadata for an already-buried skill version after editing the
+Refreshes the digest metadata for an already-buried artifact version after editing the
 registry bundle in place.
 
 Options:
