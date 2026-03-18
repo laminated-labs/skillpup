@@ -2,7 +2,7 @@
 
 <img src="./skillpup_logo.png" alt="skillpup logo" width="240" />
 
-`skillpup` is a CLI for publishing agent skills into a private git-backed registry and fetching them into consuming repositories with a config file, lockfile, and integrity checks.
+`skillpup` is a CLI for publishing agent skills and Codex subagents into a private git-backed registry and fetching them into consuming repositories with a config file, lockfile, and integrity checks.
 
 As agentic development gets more common, skills are becoming a powerful way to share workflows and expertise, but the ecosystem is still a bit of a dog park mess. Supply chain risk, competing standards, and weak versioning make it hard to trust the skills you build yourself, let alone the ones you pick up from third parties. `skillpup` exists to help teams bury, track, and fetch skills with a little more discipline.
 
@@ -10,14 +10,15 @@ Inspired by our great friends at [Ambush Capital](https://www.ambush.capital) an
 
 ## What It Does
 
-`skillpup` gives you a simple workflow for managing reusable agent skills across repositories:
+`skillpup` gives you a simple workflow for managing reusable agent artifacts across repositories:
 
 - initialize a registry repository with `skillpup bury init`
-- publish versioned skill bundles into that registry with `skillpup bury`
-- fetch those skills into a consumer repository with `skillpup fetch`
+- publish versioned skill bundles and subagent bundles into that registry with `skillpup bury`
+- fetch those artifacts into a consumer repository with `skillpup fetch`
 - record the chosen versions in `skillpup.config.yaml`
 - pin fetched contents and source metadata in `skillpup.lock.yaml`
-- install the bundle contents into `.agents/skills/<skill-name>`
+- install skill bundles into `.agents/skills/<skill-name>`
+- install subagent bundles into `.codex/agents/<subagent-name>.toml`
 
 The CLI is designed for private, git-native workflows where teams want reproducible skill installs without maintaining a separate package registry.
 
@@ -54,8 +55,9 @@ node dist/cli.js --help
 The normal workflow involves three repositories or directories:
 
 1. a skill source repository containing a `SKILL.md`
-2. a registry repository that stores immutable bundled versions
-3. a consumer repository that fetches and installs skills
+2. optionally, a repository containing Codex custom subagent TOML files
+3. a registry repository that stores immutable bundled versions
+4. a consumer repository that fetches and installs artifacts
 
 ### 1. Initialize a Registry
 
@@ -73,7 +75,7 @@ This creates the registry scaffold, including:
 - `skills/`
 - a registry `README.md`
 
-### 2. Publish a Skill into the Registry
+### 2. Publish a Skill or Subagent into the Registry
 
 Assume you have a git repository at `../reviewer-skill` whose skill root contains `SKILL.md`.
 
@@ -94,6 +96,15 @@ If the skill lives in a nested directory, point at it explicitly:
 ```bash
 skillpup bury ../team-skills \
   --path skills/reviewer \
+  --registry ../skill-registry \
+  --commit
+```
+
+To publish a project-scoped Codex subagent, point `--path` at the TOML file inside the source repository:
+
+```bash
+skillpup bury ../team-subagents \
+  --path .codex/agents/reviewer.toml \
   --registry ../skill-registry \
   --commit
 ```
@@ -139,7 +150,7 @@ A skill bundle is the copied contents of a skill root directory. The selected di
 
 ### Consumer Config
 
-`skillpup.config.yaml` declares which skills a consuming repository wants and where installed skill files should live.
+`skillpup.config.yaml` declares which skills and subagents a consuming repository wants and where installed files should live.
 
 Canonical example:
 
@@ -149,11 +160,16 @@ registry:
   url: ../skill-registry
 
 skillsDir: .agents/skills
+subagentsDir: .codex/agents
 
 skills:
   - name: reviewer
     version: v1.10.0
   - name: writer
+
+subagents:
+  - name: courier-reviewer
+    version: v1.0.0
 ```
 
 Supported config discovery locations include:
@@ -167,7 +183,7 @@ Supported config discovery locations include:
 
 ### Lockfile
 
-`skillpup.lock.yaml` records the resolved version, registry path, digest, and source metadata for each installed skill.
+`skillpup.lock.yaml` records the resolved version, registry path, digest, and source metadata for each installed skill and subagent.
 
 Example excerpt:
 
@@ -182,9 +198,19 @@ skills:
     sourcePath: .
     sourceRef: v1.10.0
     sourceCommit: 0123456789abcdef
+subagents:
+  - name: courier-reviewer
+    version: v1.0.0
+    registryPath: subagents/courier-reviewer/versions/v1.0.0
+    digest: sha256:...
+    buriedAt: 2026-03-07T00:00:00.000Z
+    sourceUrl: ../team-subagents
+    sourcePath: .codex/agents/courier-reviewer.toml
+    sourceRef: v1.0.0
+    sourceCommit: fedcba9876543210
 ```
 
-### Installed Skills Directory
+### Installed Artifact Directories
 
 Fetched skill files are installed into `.agents/skills` by default:
 
@@ -198,7 +224,17 @@ Fetched skill files are installed into `.agents/skills` by default:
 
 If `skillsDir` is omitted, `skillpup` reuses an existing supported skills directory when it finds one and otherwise falls back to `.agents/skills`. `skillpup fetch --registry ...` writes the resolved path into the generated config.
 
-When running inside a git repository, `skillpup fetch` also ensures the effective skills directory is ignored by the repo `.gitignore`. If any repo `.gitignore` already covers that path, no new rule is added.
+Fetched subagent files are installed into `.codex/agents` by default:
+
+```text
+.codex/
+  agents/
+    courier-reviewer.toml
+```
+
+If `subagentsDir` is omitted, `skillpup` falls back to `.codex/agents`.
+
+When running inside a git repository, `skillpup fetch` ensures the effective install directories are ignored by the repo `.gitignore`. If any repo `.gitignore` already covers that path, no new rule is added.
 
 ## Configuration Reference
 
@@ -207,49 +243,54 @@ When running inside a git repository, `skillpup fetch` also ensures the effectiv
 | `registry.type` | string | `"git"` | Registry backend type. Current supported value is `git`. |
 | `registry.url` | string | none | Path or git URL used for fetching skills. |
 | `skillsDir` | string | detected, fallback `.agents/skills` | Destination directory for installed skill bundles. |
+| `subagentsDir` | string | `.codex/agents` | Destination directory for installed project-scoped subagent TOML files. |
 | `skills[].name` | string | none | Skill name to fetch. |
 | `skills[].version` | string | highest available semver-like version | Optional explicit version to pin in config. |
+| `subagents[].name` | string | none | Subagent name to fetch. |
+| `subagents[].version` | string | highest available semver-like version | Optional explicit version to pin in config. |
 
 Notes:
 
 - if `skills[].version` is omitted, `fetch` picks the highest available semver-like version
 - when no semver-like versions exist, the newest buried entry wins
-- `skillpup fetch reviewer@v1.2.3` updates config and lockfile to that exact version
+- `skillpup fetch reviewer@v1.2.3` updates config and lockfile to that exact skill version
+- `skillpup fetch subagent:courier-reviewer@v1.0.0` updates config and lockfile to that exact subagent version
 
 ## Command Reference
 
-### `skillpup fetch [skills...]`
+### `skillpup fetch [artifacts...]`
 
-Fetches and installs the configured skills into the current repository.
+Fetches and installs the configured skills and subagents into the current repository.
 
 Arguments:
 
-- `skills`: optional list of `name` or `name@version` specifiers
+- `artifacts`: optional list of `name`, `name@version`, `skill:name`, or `subagent:name@version` specifiers
 
 Options:
 
 - `--registry <path-or-git-url>`: override the configured registry for the current run
 - `--generate`: build or update config entries from the registry before fetching
-- `--all`: when used with `--generate`, select every available skill in the registry
+- `--all`: when used with `--generate`, select every available artifact in the registry
 - `--merge`: when used with `--generate`, merge the generated selection into the existing config
-- `--replace`: when used with `--generate`, replace the existing config skill list
-- `--force`: accept digest changes for explicitly requested skills and rewrite their lockfile entries
+- `--replace`: when used with `--generate`, replace the existing config artifact lists
+- `--force`: accept digest changes for explicitly requested artifacts and rewrite their lockfile entries
 - `--commit`: commit config and lockfile changes
 
 Behavior:
 
 - bootstraps config if no config file exists and `--registry` is provided
-- when `skills...` are passed, only those named skills are fetched for that run
-- named fetches update config and lockfile entries for the requested skills without reinstalling unrelated configured skills
-- `fetch --generate --registry ...` can create a config by selecting from the registry instead of naming skills up front
-- `fetch --generate --all` selects every skill in the registry without prompting
+- when `artifacts...` are passed, only those named artifacts are fetched for that run
+- named fetches update config and lockfile entries for the requested artifacts without reinstalling unrelated configured artifacts
+- `fetch --generate --registry ...` can create a config by selecting from the registry instead of naming artifacts up front
+- `fetch --generate --all` selects every skill and subagent in the registry without prompting
 - `fetch --generate` prompts before changing an existing config unless `--merge` or `--replace` is passed
-- `fetch --generate` requires a TTY unless you pass explicit skill names or `--all`
-- writes the resolved `skillsDir` into bootstrapped config files
-- ensures the effective `skillsDir` is ignored in the git-root `.gitignore` when needed
-- rewrites the installed skill directory from registry contents on each fetch
-- removes skills that are no longer declared in config
+- `fetch --generate` requires a TTY unless you pass explicit artifact names or `--all`
+- writes the resolved `skillsDir` and `subagentsDir` into bootstrapped config files
+- ensures the effective install directories are ignored in the git-root `.gitignore` when needed
+- rewrites installed artifact contents from registry contents on each fetch
+- removes artifacts that are no longer declared in config
 - verifies installed contents against the registry digest before completing
+- bare fetch names prefer the configured kind when the same name exists as both a skill and a subagent; otherwise use `skill:<name>` or `subagent:<name>` to disambiguate
 
 ### `skillpup bury init [directory]`
 
@@ -257,28 +298,30 @@ Initializes a directory as a registry repository. If no directory is provided, t
 
 ### `skillpup bury <source-git-url>`
 
-Publishes a skill from a git repository into a local registry.
+Publishes a skill or subagent from a git repository into a local registry.
 
 Options:
 
-- `--path <skill-dir>`: path to the skill root within the source repository
+- `--path <artifact-path>`: path to the skill root or subagent TOML file within the source repository
 - `--ref <git-ref>`: branch, tag, or commit to import
 - `--version <stored-version>`: version string to store in the registry
-- `--name <skill-name>`: override the derived skill name
+- `--name <artifact-name>`: override the derived artifact name
 - `--registry <local-path>`: local path to the registry repository
 - `--commit`: commit registry changes
 
 Behavior:
 
-- the selected skill directory must contain `SKILL.md`
+- a skill target must be a directory containing `SKILL.md`
+- a subagent target must be a TOML file containing `name`, `description`, and `developer_instructions`
 - top-level source repo metadata such as `.git` is stripped from the stored bundle
 - if `--ref` is omitted, the highest semver-like tag is preferred
 - if no semver-like tag exists, the source branch or commit is used
 - if `--version` is omitted, the selected tag or commit becomes the stored version
+- subagents are stored in the registry as canonical one-file bundles and install into `.codex/agents/<name>.toml`
 
 ### `skillpup bury refresh <target-folder>`
 
-Refreshes the digest metadata for an already-buried skill version after editing the
+Refreshes the digest metadata for an already-buried artifact version after editing the
 registry bundle in place.
 
 Options:
@@ -300,10 +343,10 @@ Behavior:
 - lockfile entries include the resolved version, digest, registry path, and source metadata
 - fetch detects registry mutations after locking and fails on digest mismatches
 - digest checks include file contents and permission-sensitive filesystem metadata
-- repeated fetches reconstruct the installed skill directory from the registry bundle
+- repeated fetches reconstruct installed artifact contents from the registry bundle
 - `bury` strips top-level `.git` metadata from published repo-root skills so consumers do not receive nested git repositories
 - `bury refresh` intentionally mutates an existing buried version in place; consumers locked to the older digest will keep failing until their lockfile is updated
-- `fetch <skill-name> --force` accepts a refreshed digest for that named skill and rewrites its lockfile entry
+- `fetch <artifact-name> --force` accepts a refreshed digest for that explicitly requested artifact and rewrites its lockfile entry
 
 Commit behavior:
 
@@ -325,11 +368,19 @@ skillpup fetch reviewer --registry ../skill-registry
 
 The directory you publish with `bury` must contain a `SKILL.md` at its root. Use `--path` if the skill is nested inside a larger repository.
 
+### Invalid subagent TOML
+
+Subagents must be buried from a TOML file path and must declare `name`, `description`, and `developer_instructions`.
+
 ### Skill version resolution is not what you expected
 
 - use `name@version` with `fetch` to force an exact version
 - use `--version` with `bury` to record a specific version explicitly
 - when versions are omitted, semver-like versions take precedence
+
+### Ambiguous artifact names
+
+If the same name exists as both a skill and a subagent, use `skill:<name>` or `subagent:<name>` when fetching it for the first time.
 
 ### Running from a nested directory
 
@@ -339,8 +390,12 @@ The directory you publish with `bury` must contain a `SKILL.md` at its root. Use
 
 The bundled files in the registry no longer match the digest recorded in `metadata.yaml`.
 
-- republish the skill as a new version if the bundle changed
+- republish the artifact as a new version if the bundle changed
 - or run `skillpup bury refresh <path>` if you intentionally edited the existing buried bundle in place
+
+### Codex `[agents]` settings
+
+`skillpup` v1 manages project-scoped subagent files in `.codex/agents`, but it does not manage `.codex/config.toml` or global `[agents]` settings such as `max_threads` or `max_depth`.
 
 ### Skills directory detection
 

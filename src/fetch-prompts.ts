@@ -1,8 +1,11 @@
 import { checkbox, select } from "@inquirer/prompts";
+import type { ArtifactKind } from "./types.js";
+import { formatArtifactSpecifier } from "./utils.js";
 
 export type GenerateMergeStrategy = "merge" | "replace";
 
 export type RegistrySkillChoice = {
+  kind: ArtifactKind;
   name: string;
   version: string;
   configured: boolean;
@@ -25,11 +28,12 @@ function isPromptCancelError(error: unknown) {
 }
 
 export function buildRegistrySkillChoiceLabel(skill: RegistrySkillChoice) {
+  const prefix = skill.kind === "skill" ? "skill" : "subagent";
   if (skill.configuredVersion && skill.configuredVersion !== skill.version) {
-    return `${skill.name}  latest ${skill.version}  pinned ${skill.configuredVersion}`;
+    return `${skill.name}  ${prefix}  latest ${skill.version}  pinned ${skill.configuredVersion}`;
   }
 
-  return `${skill.name}  ${skill.version}${skill.configured ? "  (configured)" : ""}`;
+  return `${skill.name}  ${prefix}  ${skill.version}${skill.configured ? "  (configured)" : ""}`;
 }
 
 export function buildRegistrySkillChoiceValue(
@@ -37,8 +41,8 @@ export function buildRegistrySkillChoiceValue(
   mergeStrategy: GenerateMergeStrategy
 ) {
   return mergeStrategy === "replace" && skill.configuredVersion
-    ? `${skill.name}@${skill.configuredVersion}`
-    : skill.name;
+    ? formatArtifactSpecifier(skill.name, skill.kind, skill.configuredVersion)
+    : formatArtifactSpecifier(skill.name, skill.kind);
 }
 
 export const defaultFetchPrompts: FetchPrompts = {
@@ -47,12 +51,12 @@ export const defaultFetchPrompts: FetchPrompts = {
       return await checkbox({
         message:
           mergeStrategy === "replace"
-            ? "Select the registry skills to track in this project"
-            : "Select registry skills to add or update in this project",
+            ? "Select the registry skills and subagents to track in this project"
+            : "Select registry skills and subagents to add or update in this project",
         pageSize: Math.min(15, Math.max(availableSkills.length, 1)),
         loop: false,
         validate: (value) =>
-          value.length > 0 ? true : "Select at least one skill to continue.",
+          value.length > 0 ? true : "Select at least one skill or subagent to continue.",
         choices: availableSkills.map((skill) => ({
           name: buildRegistrySkillChoiceLabel(skill),
           value: buildRegistrySkillChoiceValue(skill, mergeStrategy),
@@ -70,17 +74,17 @@ export const defaultFetchPrompts: FetchPrompts = {
   async chooseGenerateMergeStrategy({ configPath, configuredSkillCount }) {
     try {
       return await select({
-        message: `Found ${configuredSkillCount} configured skill${configuredSkillCount === 1 ? "" : "s"} in ${configPath}. How should the generated selection be applied?`,
+        message: `Found ${configuredSkillCount} configured artifact${configuredSkillCount === 1 ? "" : "s"} in ${configPath}. How should the generated selection be applied?`,
         choices: [
           {
             name: "Merge into the existing config",
             value: "merge",
-            description: "Keep existing skills and add or update the selected ones.",
+            description: "Keep existing skills and subagents and add or update the selected ones.",
           },
           {
             name: "Replace the existing config selection",
             value: "replace",
-            description: "Rewrite the skills list to match only the generated selection.",
+            description: "Rewrite the skills and subagents lists to match only the generated selection.",
           },
         ],
       });

@@ -10,6 +10,7 @@ import {
 import type { SkillpupConfig } from "../src/types.js";
 import {
   createSkillRepo,
+  createSubagentRepo,
   fileExists,
   initTestRepo,
   makeTempDir,
@@ -31,7 +32,7 @@ describe("skillpup generate mode", () => {
   });
 
   it(
-    "bootstraps config and fetches all registry skills with --generate --all",
+    "bootstraps config and fetches all registry skills and subagents with --generate --all",
     async () => {
       const registryDir = path.join(rootDir, "registry-generate-all");
       await runCli(rootDir, ["bury", "init", registryDir]);
@@ -45,9 +46,21 @@ describe("skillpup generate mode", () => {
         skillName: "writer",
         versions: ["v2.0.0"],
       });
+      const reviewerSubagent = await createSubagentRepo({
+        subagentName: "reviewer-subagent",
+        versions: ["v3.0.0"],
+      });
 
       await runCli(rootDir, ["bury", reviewer.repoDir, "--registry", registryDir]);
       await runCli(rootDir, ["bury", writer.repoDir, "--registry", registryDir]);
+      await runCli(rootDir, [
+        "bury",
+        reviewerSubagent.repoDir,
+        "--path",
+        reviewerSubagent.subagentPath,
+        "--registry",
+        registryDir,
+      ]);
 
       const consumerDir = path.join(rootDir, "consumer-generate-all");
       await initTestRepo(consumerDir);
@@ -61,7 +74,9 @@ describe("skillpup generate mode", () => {
       ]);
 
       expect(result.exitCode).toBe(0);
-      expect(result.stdout).toContain("Fetched reviewer@v1.2.0, writer@v2.0.0");
+      expect(result.stdout).toContain("reviewer@v1.2.0");
+      expect(result.stdout).toContain("writer@v2.0.0");
+      expect(result.stdout).toContain("subagent:reviewer-subagent@v3.0.0");
 
       const config = await readYamlFile<SkillpupConfig>(
         path.join(consumerDir, "skillpup.config.yaml")
@@ -70,11 +85,17 @@ describe("skillpup generate mode", () => {
         { name: "reviewer", version: "v1.2.0" },
         { name: "writer", version: "v2.0.0" },
       ]);
+      expect(config.subagents).toEqual([
+        { name: "reviewer-subagent", version: "v3.0.0" },
+      ]);
       expect(
         await fileExists(path.join(consumerDir, ".agents/skills/reviewer/SKILL.md"))
       ).toBe(true);
       expect(
         await fileExists(path.join(consumerDir, ".agents/skills/writer/SKILL.md"))
+      ).toBe(true);
+      expect(
+        await fileExists(path.join(consumerDir, ".codex/agents/reviewer-subagent.toml"))
       ).toBe(true);
     },
     TEST_TIMEOUT
@@ -104,7 +125,7 @@ describe("skillpup generate mode", () => {
       ]);
 
       expect(result.exitCode).toBe(1);
-      expect(result.stderr).toContain("Cannot prompt for registry skills");
+      expect(result.stderr).toContain("Cannot prompt for registry artifacts");
     },
     TEST_TIMEOUT
   );
@@ -362,6 +383,7 @@ describe("skillpup generate mode", () => {
       expect(
         buildRegistrySkillChoiceValue(
           {
+            kind: "skill",
             name: "reviewer",
             version: "v2.0.0",
             configured: true,
@@ -369,17 +391,18 @@ describe("skillpup generate mode", () => {
           },
           "replace"
         )
-      ).toBe("reviewer@v1.0.0");
+      ).toBe("skill:reviewer@v1.0.0");
       expect(
         buildRegistrySkillChoiceValue(
           {
+            kind: "subagent",
             name: "writer",
             version: "v1.0.0",
             configured: false,
           },
           "replace"
         )
-      ).toBe("writer");
+      ).toBe("subagent:writer");
     },
     TEST_TIMEOUT
   );
@@ -389,20 +412,22 @@ describe("skillpup generate mode", () => {
     async () => {
       expect(
         buildRegistrySkillChoiceLabel({
+          kind: "skill",
           name: "reviewer",
           version: "v2.0.0",
           configured: true,
           configuredVersion: "v1.0.0",
         })
-      ).toBe("reviewer  latest v2.0.0  pinned v1.0.0");
+      ).toBe("reviewer  skill  latest v2.0.0  pinned v1.0.0");
       expect(
         buildRegistrySkillChoiceLabel({
+          kind: "subagent",
           name: "writer",
           version: "v1.0.0",
           configured: true,
           configuredVersion: "v1.0.0",
         })
-      ).toBe("writer  v1.0.0  (configured)");
+      ).toBe("writer  subagent  v1.0.0  (configured)");
     },
     TEST_TIMEOUT
   );

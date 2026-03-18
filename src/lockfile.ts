@@ -17,6 +17,7 @@ const lockfileEntrySchema = z.object({
 
 const lockfileSchema = z.object({
   skills: z.array(lockfileEntrySchema).default([]),
+  subagents: z.array(lockfileEntrySchema).default([]),
 });
 
 export async function loadLockfile(lockfilePath: string): Promise<SkillpupLockfile> {
@@ -30,7 +31,7 @@ export async function loadLockfile(lockfilePath: string): Promise<SkillpupLockfi
     return parsed.data;
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") {
-      return { skills: [] };
+      return { skills: [], subagents: [] };
     }
     throw error;
   }
@@ -43,6 +44,7 @@ export async function writeLockfile(
   const { stringify } = await import("yaml");
   const contents = stringify({
     skills: lockfile.skills,
+    subagents: lockfile.subagents,
   });
   await fs.mkdir(path.dirname(lockfilePath), { recursive: true });
   await fs.writeFile(lockfilePath, contents, "utf8");

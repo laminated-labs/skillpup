@@ -1,20 +1,33 @@
+export type ArtifactKind = "skill" | "subagent";
+
 export type RegistryConfig = {
   type: "git";
   url: string;
 };
 
-export type SkillConfigEntry = {
+export type ArtifactConfigEntry = {
   name: string;
   version?: string;
 };
+
+export type SkillConfigEntry = ArtifactConfigEntry;
+export type SubagentConfigEntry = ArtifactConfigEntry;
 
 export type SkillpupConfig = {
   registry: RegistryConfig;
   skillsDir: string;
   skills: SkillConfigEntry[];
+  subagentsDir: string;
+  subagents: SubagentConfigEntry[];
 };
 
 export type ResolvedSkillConfigEntry = {
+  name: string;
+  version: string;
+};
+
+export type ResolvedArtifactConfigEntry = {
+  kind: ArtifactKind;
   name: string;
   version: string;
 };
@@ -31,8 +44,13 @@ export type LockfileEntry = {
   sourceCommit: string;
 };
 
+export type ArtifactVersionMetadata = LockfileEntry & {
+  kind: ArtifactKind;
+};
+
 export type SkillpupLockfile = {
   skills: LockfileEntry[];
+  subagents: LockfileEntry[];
 };
 
 export type RegistryRootMetadata = {
@@ -52,23 +70,23 @@ export type SkillIndex = {
   versions: SkillIndexVersion[];
 };
 
-export type SkillVersionMetadata = LockfileEntry;
+export type SkillVersionMetadata = ArtifactVersionMetadata;
 
 export type FetchResult = {
   configPath: string;
   lockfilePath: string;
-  installed: SkillVersionMetadata[];
-  removed: string[];
+  installed: ArtifactVersionMetadata[];
+  removed: Array<{ kind: ArtifactKind; name: string }>;
 };
 
 export type BuryAddResult = {
-  metadata: SkillVersionMetadata;
+  metadata: ArtifactVersionMetadata;
   indexPath: string;
   versionPath: string;
 };
 
 export type RefreshResult = {
-  metadata: SkillVersionMetadata;
+  metadata: ArtifactVersionMetadata;
   indexPath: string;
   versionPath: string;
   digestChanged: boolean;

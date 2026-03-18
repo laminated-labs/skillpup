@@ -96,6 +96,40 @@ export async function createSkillRepo(options: {
   };
 }
 
+export async function createSubagentRepo(options: {
+  subagentName: string;
+  subagentPath?: string;
+  versions: string[];
+  extraToml?: string;
+}) {
+  const parentDir = await makeTempDir("skillpup-subagent-repo-");
+  const repoDir = path.join(parentDir, options.subagentName);
+  await initTestRepo(repoDir);
+
+  const subagentPath =
+    options.subagentPath ?? path.join(".codex", "agents", `${options.subagentName}.toml`);
+  const absoluteSubagentPath = path.join(repoDir, subagentPath);
+
+  for (const version of options.versions) {
+    await fs.mkdir(path.dirname(absoluteSubagentPath), { recursive: true });
+    await fs.writeFile(
+      absoluteSubagentPath,
+      `name = "${options.subagentName}"
+description = "Version ${version}"
+developer_instructions = "Follow ${options.subagentName} ${version}"
+${options.extraToml ? `${options.extraToml.trim()}\n` : ""}`,
+      "utf8"
+    );
+    await commitAll(repoDir, `release ${version}`);
+    await runGit(["tag", version], repoDir);
+  }
+
+  return {
+    repoDir,
+    subagentPath,
+  };
+}
+
 export async function runCli(cwd: string, args: string[]) {
   const cliPath = path.resolve(process.cwd(), "dist/cli.js");
   try {
