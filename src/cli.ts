@@ -3,6 +3,7 @@ import { Command } from "commander";
 import { buryInit, burySkill, refreshBuriedSkill } from "./bury.js";
 import { fetchSkills } from "./fetch.js";
 import { runWithSpinner } from "./progress.js";
+import { formatArtifactRef } from "./utils.js";
 
 const require = createRequire(import.meta.url);
 const packageJson = require("../package.json") as { version: string };
@@ -13,20 +14,20 @@ export async function runCli(argv: string[] = process.argv) {
   program
     .enablePositionalOptions()
     .name("skillpup")
-    .description("Private registry workflow for agent skills.")
+    .description("Private registry workflow for agent skills and subagents.")
     .version(packageJson.version);
 
   program
     .command("fetch")
-    .argument("[skills...]", "Skill names or name@version specifiers")
+    .argument("[skills...]", "Artifact names or kind:name@version specifiers")
     .option("--registry <path-or-git-url>", "Override the configured registry for this run")
     .option("--generate", "Generate config entries from the registry before fetching")
-    .option("--all", "When used with --generate, select every available registry skill")
-    .option("--merge", "When used with --generate, merge generated skills into the existing config")
-    .option("--replace", "When used with --generate, replace the existing config skill list")
+    .option("--all", "When used with --generate, select every available registry artifact")
+    .option("--merge", "When used with --generate, merge generated artifacts into the existing config")
+    .option("--replace", "When used with --generate, replace the existing config artifact lists")
     .option(
       "--force",
-      "Accept digest changes for explicitly requested skills and rewrite their lockfile entries"
+      "Accept digest changes for explicitly requested artifacts and rewrite their lockfile entries"
     )
     .option("--commit", "Commit config and lockfile changes")
     .action(async (skills: string[], options) => {
@@ -48,7 +49,9 @@ export async function runCli(argv: string[] = process.argv) {
         ? await task()
         : await runWithSpinner("Tracking the scent...", task);
 
-      const installedRefs = result.installed.map((skill) => `${skill.name}@${skill.version}`);
+      const installedRefs = result.installed.map((artifact) =>
+        formatArtifactRef(artifact.name, artifact.version, artifact.kind)
+      );
       if (installedRefs.length > 0) {
         console.log(`Fetched ${installedRefs.join(", ")}`);
         return;
@@ -59,17 +62,17 @@ export async function runCli(argv: string[] = process.argv) {
         return;
       }
 
-      console.log("No skills to fetch");
+      console.log("No skills or subagents to fetch");
     });
 
   const bury = program
     .command("bury")
-    .description("Bury a skill in the registry")
-    .argument("[source-git-url]", "Git repository URL or local path containing the skill")
-    .option("--path <skill-dir>", "Path to the skill root within the source repository")
+    .description("Bury a skill or subagent in the registry")
+    .argument("[source-git-url]", "Git repository URL or local path containing the artifact")
+    .option("--path <artifact-path>", "Path to the skill root or subagent TOML file within the source repository")
     .option("--ref <git-ref>", "Git ref to import")
     .option("--version <stored-version>", "Version to record in the registry")
-    .option("--name <skill-name>", "Skill name override")
+    .option("--name <artifact-name>", "Artifact name override")
     .option("--registry <local-path>", "Local path to the registry")
     .option("--commit", "Commit registry changes")
     .action(async (sourceGitUrl: string | undefined, options) => {

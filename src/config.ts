@@ -4,7 +4,7 @@ import { cosmiconfig } from "cosmiconfig";
 import { z } from "zod";
 import type { SkillpupConfig } from "./types.js";
 import { resolveSkillsDir } from "./skills-dir.js";
-import { CONFIG_FILE_BASENAME } from "./utils.js";
+import { CONFIG_FILE_BASENAME, DEFAULT_SUBAGENTS_DIR } from "./utils.js";
 
 const registrySchema = z.object({
   type: z.literal("git").default("git"),
@@ -19,7 +19,9 @@ const skillEntrySchema = z.object({
 const configSchema = z.object({
   registry: registrySchema,
   skillsDir: z.string().min(1).optional(),
+  subagentsDir: z.string().min(1).optional(),
   skills: z.array(skillEntrySchema).default([]),
+  subagents: z.array(skillEntrySchema).default([]),
 });
 
 export type LoadedProjectConfig = {
@@ -83,6 +85,7 @@ export async function loadProjectConfig(
   const configDir = path.dirname(result.filepath);
   const skillsDir =
     parsed.data.skillsDir ?? (await resolveSkillsDir(configDir));
+  const subagentsDir = parsed.data.subagentsDir ?? DEFAULT_SUBAGENTS_DIR;
 
   return {
     path: result.filepath,
@@ -90,6 +93,8 @@ export async function loadProjectConfig(
       registry: parsed.data.registry,
       skillsDir,
       skills: parsed.data.skills,
+      subagentsDir,
+      subagents: parsed.data.subagents,
     },
   };
 }
@@ -102,9 +107,14 @@ export async function writeProjectConfig(
   const normalizedConfig = {
     registry: config.registry,
     skillsDir: config.skillsDir,
+    subagentsDir: config.subagentsDir,
     skills: config.skills.map((skill) => ({
       name: skill.name,
       ...(skill.version ? { version: skill.version } : {}),
+    })),
+    subagents: config.subagents.map((subagent) => ({
+      name: subagent.name,
+      ...(subagent.version ? { version: subagent.version } : {}),
     })),
   };
 

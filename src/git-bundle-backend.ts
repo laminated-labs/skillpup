@@ -3,11 +3,12 @@ import os from "node:os";
 import path from "node:path";
 import { z } from "zod";
 import type {
+  ArtifactKind,
+  ArtifactVersionMetadata,
   RegistryRootMetadata,
   RefreshResult,
   SkillIndex,
   SkillIndexVersion,
-  SkillVersionMetadata,
 } from "./types.js";
 import { cloneRepo, ensureEmptyDir } from "./git.js";
 import {
@@ -18,11 +19,14 @@ import {
 } from "./fs-utils.js";
 import {
   REGISTRY_FILE_BASENAME,
+  artifactBundleDirectory,
+  artifactKindDirectory,
   canonicalRegistryPath,
   compareSemverDescending,
+  formatArtifactKindLabel,
   resolveInside,
   toPosix,
-  validateSkillName,
+  validateArtifactName,
 } from "./utils.js";
 
 const registryRootSchema = z.object({
@@ -49,6 +53,7 @@ const indexSchema = z.object({
 });
 
 const metadataSchema = z.object({
+  kind: z.enum(["skill", "subagent"]).default("skill"),
   name: z.string().min(1),
   version: z.string().min(1),
   registryPath: z.string().min(1),
@@ -92,6 +97,7 @@ export class GitBundleRegistryBackend {
 
     await ensureDir(rootPath);
     await ensureDir(path.join(rootPath, "skills"));
+    await ensureDir(path.join(rootPath, "subagents"));
     await writeYamlFile(path.join(rootPath, REGISTRY_FILE_BASENAME), metadata);
 
     const readmePath = path.join(rootPath, "README.md");
@@ -113,7 +119,14 @@ export class GitBundleRegistryBackend {
   }
 
   async listVersions(skillName: string): Promise<SkillIndexVersion[]> {
-    const indexPath = this.getIndexPath(skillName);
+    return this.listVersionsForKind("skill", skillName);
+  }
+
+  async listVersionsForKind(
+    kind: ArtifactKind,
+    name: string
+  ): Promise<SkillIndexVersion[]> {
+    const indexPath = this.getIndexPath(kind, name);
     if (!(await pathExists(indexPath))) {
       return [];
     }
@@ -122,46 +135,71 @@ export class GitBundleRegistryBackend {
   }
 
   async listSkills() {
-    const skillsRoot = path.join(this.rootPath, "skills");
-    if (!(await pathExists(skillsRoot))) {
+    return this.listArtifacts("skill");
+  }
+
+  async listArtifacts(kind: ArtifactKind) {
+    const artifactsRoot = path.join(this.rootPath, artifactKindDirectory(kind));
+    if (!(await pathExists(artifactsRoot))) {
       return [];
     }
 
-    const entries = await fs.readdir(skillsRoot, { withFileTypes: true });
-    const skills: string[] = [];
+    const entries = await fs.readdir(artifactsRoot, { withFileTypes: true });
+    const artifacts: string[] = [];
     for (const entry of entries) {
       if (!entry.isDirectory()) {
         continue;
       }
 
-      if (!(await pathExists(path.join(skillsRoot, entry.name, "index.yaml")))) {
+      if (!(await pathExists(path.join(artifactsRoot, entry.name, "index.yaml")))) {
         continue;
       }
 
-      skills.push(entry.name);
+      artifacts.push(entry.name);
     }
 
-    return skills.sort((left, right) => left.localeCompare(right));
+    return artifacts.sort((left, right) => left.localeCompare(right));
   }
 
   async readVersionMetadata(skillName: string, version: string) {
-    const metadataPath = this.getMetadataPath(skillName, version);
+    return this.readVersionMetadataForKind("skill", skillName, version);
+  }
+
+  async readVersionMetadataForKind(
+    kind: ArtifactKind,
+    name: string,
+    version: string
+  ) {
+    const metadataPath = this.getMetadataPath(kind, name, version);
     if (!(await pathExists(metadataPath))) {
-      throw new Error(`Missing version ${skillName}@${version} in registry`);
+      throw new Error(
+        `Missing ${formatArtifactKindLabel(kind)} version ${name}@${version} in registry`
+      );
     }
-    return readYamlFile(metadataPath, metadataSchema);
+    const metadata = await readYamlFile(metadataPath, metadataSchema);
+    return {
+      ...metadata,
+      kind,
+    } satisfies ArtifactVersionMetadata;
   }
 
   async readBundlePath(skillName: string, version: string) {
-    const bundlePath = this.getBundlePath(skillName, version);
+    return this.readBundlePathForKind("skill", skillName, version);
+  }
+
+  async readBundlePathForKind(kind: ArtifactKind, name: string, version: string) {
+    const bundlePath = this.getBundlePath(kind, name, version);
     if (!(await pathExists(bundlePath))) {
-      throw new Error(`Missing bundle for ${skillName}@${version}`);
+      throw new Error(
+        `Missing ${formatArtifactKindLabel(kind)} bundle for ${name}@${version}`
+      );
     }
     return bundlePath;
   }
 
   async publishVersion(args: {
-    skillName: string;
+    kind: ArtifactKind;
+    name: string;
     version: string;
     sourceDir: string;
     sourceUrl: string;
@@ -169,20 +207,25 @@ export class GitBundleRegistryBackend {
     sourceRef: string;
     sourceCommit: string;
   }): Promise<{
-    metadata: SkillVersionMetadata;
+    metadata: ArtifactVersionMetadata;
     indexPath: string;
     versionPath: string;
   }> {
-    const { skillName, version, sourceDir, sourceUrl, sourcePath, sourceRef, sourceCommit } =
+    const { kind, name, version, sourceDir, sourceUrl, sourcePath, sourceRef, sourceCommit } =
       args;
-    validateSkillName(skillName);
+    validateArtifactName(name);
 
-    const versionPath = resolveInside(this.rootPath, canonicalRegistryPath(skillName, version));
+    const versionPath = resolveInside(
+      this.rootPath,
+      canonicalRegistryPath(name, version, kind)
+    );
     if (await pathExists(versionPath)) {
-      throw new Error(`Registry version already exists: ${skillName}@${version}`);
+      throw new Error(
+        `Registry version already exists: ${formatArtifactKindLabel(kind)} ${name}@${version}`
+      );
     }
 
-    const bundlePath = path.join(versionPath, "skill");
+    const bundlePath = path.join(versionPath, artifactBundleDirectory(kind));
     await ensureDir(versionPath);
     await copyDirectoryStrict(sourceDir, bundlePath, {
       shouldIgnore: shouldIgnorePublishedEntry,
@@ -191,10 +234,11 @@ export class GitBundleRegistryBackend {
     const digest = await computeDirectoryDigest(bundlePath, {
       shouldIgnore: shouldIgnorePublishedEntry,
     });
-    const metadata: SkillVersionMetadata = {
-      name: skillName,
+    const metadata: ArtifactVersionMetadata = {
+      kind,
+      name,
       version,
-      registryPath: canonicalRegistryPath(skillName, version),
+      registryPath: canonicalRegistryPath(name, version, kind),
       digest,
       buriedAt: new Date().toISOString(),
       sourceUrl,
@@ -203,46 +247,56 @@ export class GitBundleRegistryBackend {
       sourceCommit,
     };
 
-    await writeYamlFile(this.getMetadataPath(skillName, version), metadata);
+    await writeYamlFile(this.getMetadataPath(kind, name, version), metadata);
 
-    const index = await this.readOrCreateIndex(skillName);
+    const index = await this.readOrCreateIndex(kind, name);
     index.versions.push({
       version,
-      metadataPath: toPosix(path.join(canonicalRegistryPath(skillName, version), "metadata.yaml")),
+      metadataPath: toPosix(path.join(canonicalRegistryPath(name, version, kind), "metadata.yaml")),
       digest,
       buriedAt: metadata.buriedAt,
     });
     index.versions = sortIndexVersions(index.versions);
-    await writeYamlFile(this.getIndexPath(skillName), index);
+    await writeYamlFile(this.getIndexPath(kind, name), index);
 
     return {
       metadata,
-      indexPath: this.getIndexPath(skillName),
+      indexPath: this.getIndexPath(kind, name),
       versionPath,
     };
   }
 
-  async refreshVersion(skillName: string, version: string): Promise<RefreshResult> {
-    validateSkillName(skillName);
+  async refreshVersion(
+    kind: ArtifactKind,
+    name: string,
+    version: string
+  ): Promise<RefreshResult> {
+    validateArtifactName(name);
 
-    const versionPath = resolveInside(this.rootPath, canonicalRegistryPath(skillName, version));
+    const versionPath = resolveInside(
+      this.rootPath,
+      canonicalRegistryPath(name, version, kind)
+    );
     if (!(await pathExists(versionPath))) {
-      throw new Error(`Missing version ${skillName}@${version} in registry`);
+      throw new Error(
+        `Missing ${formatArtifactKindLabel(kind)} version ${name}@${version} in registry`
+      );
     }
 
-    const metadataPath = this.getMetadataPath(skillName, version);
-    const bundlePath = this.getBundlePath(skillName, version);
-    const skillMarkerPath = path.join(bundlePath, "SKILL.md");
-    if (!(await pathExists(skillMarkerPath))) {
-      throw new Error(`Buried version ${skillName}@${version} is missing SKILL.md`);
+    const metadataPath = this.getMetadataPath(kind, name, version);
+    const bundlePath = this.getBundlePath(kind, name, version);
+    if (!(await this.hasExpectedBundleRoot(kind, name, bundlePath))) {
+      throw new Error(
+        `Buried ${formatArtifactKindLabel(kind)} ${name}@${version} is missing its expected root content`
+      );
     }
 
-    const metadata = await this.readVersionMetadata(skillName, version);
+    const metadata = await this.readVersionMetadataForKind(kind, name, version);
     const digest = await computeDirectoryDigest(bundlePath);
     if (digest === metadata.digest) {
       return {
         metadata,
-        indexPath: this.getIndexPath(skillName),
+        indexPath: this.getIndexPath(kind, name),
         versionPath,
         digestChanged: false,
       };
@@ -255,47 +309,65 @@ export class GitBundleRegistryBackend {
     };
     await writeYamlFile(metadataPath, refreshedMetadata);
 
-    const index = await this.readOrCreateIndex(skillName);
+    const index = await this.readOrCreateIndex(kind, name);
     const versionEntry = index.versions.find((entry) => entry.version === version);
     if (!versionEntry) {
-      throw new Error(`Missing index entry for ${skillName}@${version}`);
+      throw new Error(
+        `Missing index entry for ${formatArtifactKindLabel(kind)} ${name}@${version}`
+      );
     }
 
     versionEntry.digest = digest;
     versionEntry.buriedAt = refreshedMetadata.buriedAt;
     index.versions = sortIndexVersions(index.versions);
-    await writeYamlFile(this.getIndexPath(skillName), index);
+    await writeYamlFile(this.getIndexPath(kind, name), index);
 
     return {
       metadata: refreshedMetadata,
-      indexPath: this.getIndexPath(skillName),
+      indexPath: this.getIndexPath(kind, name),
       versionPath,
       digestChanged: true,
     };
   }
 
-  private async readOrCreateIndex(skillName: string): Promise<SkillIndex> {
-    const indexPath = this.getIndexPath(skillName);
+  private async readOrCreateIndex(kind: ArtifactKind, name: string): Promise<SkillIndex> {
+    const indexPath = this.getIndexPath(kind, name);
     if (!(await pathExists(indexPath))) {
-      return { name: skillName, versions: [] };
+      return { name, versions: [] };
     }
     return readYamlFile(indexPath, indexSchema);
   }
 
-  private getIndexPath(skillName: string) {
-    return resolveInside(this.rootPath, "skills", skillName, "index.yaml");
+  private getIndexPath(kind: ArtifactKind, name: string) {
+    return resolveInside(this.rootPath, artifactKindDirectory(kind), name, "index.yaml");
   }
 
-  private getMetadataPath(skillName: string, version: string) {
+  private getMetadataPath(kind: ArtifactKind, name: string, version: string) {
     return resolveInside(
       this.rootPath,
-      canonicalRegistryPath(skillName, version),
+      canonicalRegistryPath(name, version, kind),
       "metadata.yaml"
     );
   }
 
-  private getBundlePath(skillName: string, version: string) {
-    return resolveInside(this.rootPath, canonicalRegistryPath(skillName, version), "skill");
+  private getBundlePath(kind: ArtifactKind, name: string, version: string) {
+    return resolveInside(
+      this.rootPath,
+      canonicalRegistryPath(name, version, kind),
+      artifactBundleDirectory(kind)
+    );
+  }
+
+  private async hasExpectedBundleRoot(
+    kind: ArtifactKind,
+    name: string,
+    bundlePath: string
+  ) {
+    const expectedPath =
+      kind === "skill"
+        ? path.join(bundlePath, "SKILL.md")
+        : path.join(bundlePath, `${name}.toml`);
+    return pathExists(expectedPath);
   }
 }
 

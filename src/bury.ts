@@ -1,7 +1,7 @@
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import type { BuryAddResult, RefreshResult } from "./types.js";
+import type { ArtifactKind, BuryAddResult, RefreshResult } from "./types.js";
 import { openRegistryForWrite, GitBundleRegistryBackend } from "./git-bundle-backend.js";
 import {
   checkoutRef,
@@ -20,14 +20,19 @@ import {
 } from "./git.js";
 import { pathExists } from "./fs-utils.js";
 import {
+  buildSubagentBundleFileName,
+  isSubagentFilePath,
+  readSubagentManifest,
+} from "./subagents.js";
+import {
   REGISTRY_FILE_BASENAME,
   canonicalRegistryPath,
   compareSemverDescending,
-  formatSkillRef,
+  formatArtifactRef,
   parseSemverLike,
   resolveInside,
   toPosix,
-  validateSkillName,
+  validateArtifactName,
 } from "./utils.js";
 import {
   parseGitHubTreeUrl,
@@ -74,14 +79,20 @@ function inferBuriedVersionFromTarget(targetPath: string, registryRoot: string) 
   while (true) {
     const relativePath = toPosix(path.relative(registryRoot, currentPath));
     const match = relativePath.match(
-      /^skills\/([^/]+)\/versions\/([^/]+)(?:\/skill(?:\/.*)?)?$/
+      /^(skills|subagents)\/([^/]+)\/versions\/([^/]+)(?:\/(skill|subagent)(?:\/.*)?)?$/
     );
     if (match) {
-      const [, skillName, version] = match;
+      const [, kindDirectoryName, skillName, version] = match;
+      const kind: ArtifactKind =
+        kindDirectoryName === "subagents" ? "subagent" : "skill";
       return {
+        kind,
         skillName,
         version,
-        versionPath: resolveInside(registryRoot, canonicalRegistryPath(skillName, version)),
+        versionPath: resolveInside(
+          registryRoot,
+          canonicalRegistryPath(skillName, version, kind)
+        ),
       };
     }
 
@@ -94,6 +105,56 @@ function inferBuriedVersionFromTarget(targetPath: string, registryRoot: string) 
   throw new Error(
     `Target is not inside a buried skill version: ${targetPath}`
   );
+}
+
+async function selectBuriedArtifact(
+  cloneDir: string,
+  selectedPath: string,
+  tempRoot: string,
+  explicitName?: string
+) {
+  const sourceStats = await fs.stat(selectedPath);
+  if (sourceStats.isDirectory()) {
+    const skillMarkerPath = path.join(selectedPath, "SKILL.md");
+    if (!(await pathExists(skillMarkerPath))) {
+      throw new Error(
+        "Selected path must be a skill directory containing SKILL.md or a subagent TOML file. Pass --path to a subagent TOML file."
+      );
+    }
+
+    const skillName = explicitName ?? path.posix.basename(toPosix(path.relative(cloneDir, selectedPath) || path.basename(selectedPath)));
+    return {
+      kind: "skill" as const,
+      name: skillName,
+      sourceDir: selectedPath,
+    };
+  }
+
+  if (!sourceStats.isFile() || !isSubagentFilePath(selectedPath)) {
+    throw new Error(
+      "Selected path must be a skill directory containing SKILL.md or a subagent TOML file. Pass --path to a subagent TOML file."
+    );
+  }
+
+  const manifest = await readSubagentManifest(selectedPath);
+  if (explicitName && explicitName !== manifest.name) {
+    throw new Error(
+      `Subagent name override "${explicitName}" must match the manifest name "${manifest.name}".`
+    );
+  }
+
+  const bundleSourceDir = path.join(tempRoot, "subagent-bundle");
+  await fs.mkdir(bundleSourceDir, { recursive: true });
+  await fs.copyFile(
+    selectedPath,
+    path.join(bundleSourceDir, buildSubagentBundleFileName(manifest.name))
+  );
+
+  return {
+    kind: "subagent" as const,
+    name: manifest.name,
+    sourceDir: bundleSourceDir,
+  };
 }
 
 export async function buryInit(options?: { directory?: string; cwd?: string }) {
@@ -171,29 +232,34 @@ export async function burySkill(options: {
 
     const sourceRef = inferredRef ?? selectedTag ?? selectedRef ?? (await getCurrentBranch(cloneDir));
     const sourceCommit = await getHeadCommit(cloneDir);
-    const sourceSkillRoot = inferredPath
+    const selectedSourcePath = inferredPath
       ? resolveInside(cloneDir, inferredPath)
       : cloneDir;
 
-    if (!(await pathExists(sourceSkillRoot))) {
+    if (!(await pathExists(selectedSourcePath))) {
       throw new Error(`Skill path does not exist: ${inferredPath}`);
     }
 
-    const skillMarkerPath = path.join(sourceSkillRoot, "SKILL.md");
-    if (!(await pathExists(skillMarkerPath))) {
-      throw new Error(`Selected skill directory does not contain SKILL.md`);
-    }
+    const selectedArtifact = await selectBuriedArtifact(
+      cloneDir,
+      selectedSourcePath,
+      tempRoot,
+      options.name
+    );
 
     const skillName =
-      options.name ?? deriveDefaultSkillName(options.sourceGitUrl, inferredPath);
-    validateSkillName(skillName);
+      selectedArtifact.kind === "skill"
+        ? options.name ?? deriveDefaultSkillName(options.sourceGitUrl, inferredPath)
+        : selectedArtifact.name;
+    validateArtifactName(skillName);
     const version = options.version ?? selectedTag ?? sourceCommit;
     const sourcePath = inferredPath ?? ".";
 
     const result = await backend.publishVersion({
-      skillName,
+      kind: selectedArtifact.kind,
+      name: skillName,
       version,
-      sourceDir: sourceSkillRoot,
+      sourceDir: selectedArtifact.sourceDir,
       sourceUrl: options.sourceGitUrl,
       sourcePath,
       sourceRef,
@@ -210,7 +276,11 @@ export async function burySkill(options: {
       await stagePaths(gitRoot, allowedPaths);
       await commitChanges(
         gitRoot,
-        `chore(skillpup-registry): bury ${formatSkillRef(skillName, version)}`
+        `chore(skillpup-registry): bury ${formatArtifactRef(
+          skillName,
+          version,
+          selectedArtifact.kind
+        )}`
       );
     }
 
@@ -243,7 +313,11 @@ export async function refreshBuriedSkill(options: {
 
   const backend = await openRegistryForWrite(registryRoot);
   const target = inferBuriedVersionFromTarget(absoluteTargetPath, registryRoot);
-  const result = await backend.refreshVersion(target.skillName, target.version);
+  const result = await backend.refreshVersion(
+    target.kind,
+    target.skillName,
+    target.version
+  );
 
   if (options.commit && result.digestChanged) {
     const gitRoot = await getGitRoot(registryRoot);
@@ -255,9 +329,10 @@ export async function refreshBuriedSkill(options: {
     await stagePaths(gitRoot, allowedPaths);
     await commitChanges(
       gitRoot,
-      `chore(skillpup-registry): refresh ${formatSkillRef(
+      `chore(skillpup-registry): refresh ${formatArtifactRef(
         result.metadata.name,
-        result.metadata.version
+        result.metadata.version,
+        result.metadata.kind
       )}`
     );
   }
