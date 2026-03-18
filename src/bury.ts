@@ -103,7 +103,7 @@ function inferBuriedVersionFromTarget(targetPath: string, registryRoot: string) 
   }
 
   throw new Error(
-    `Target is not inside a buried skill version: ${targetPath}`
+    `Target is not inside a buried artifact version: ${targetPath}`
   );
 }
 
@@ -115,7 +115,7 @@ async function selectBuriedArtifact(
 ) {
   const sourceLstat = await fs.lstat(selectedPath);
   if (sourceLstat.isSymbolicLink()) {
-    throw new Error(`Symlinked subagent files are not supported: ${selectedPath}`);
+    throw new Error(`Symlinked artifact paths are not supported: ${selectedPath}`);
   }
 
   const sourceStats = await fs.stat(selectedPath);
@@ -242,7 +242,7 @@ export async function burySkill(options: {
       : cloneDir;
 
     if (!(await pathExists(selectedSourcePath))) {
-      throw new Error(`Skill path does not exist: ${inferredPath}`);
+      throw new Error(`Artifact path does not exist: ${inferredPath}`);
     }
 
     const selectedArtifact = await selectBuriedArtifact(

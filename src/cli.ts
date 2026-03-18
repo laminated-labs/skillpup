@@ -107,7 +107,7 @@ export async function runCli(argv: string[] = process.argv) {
 
   bury
     .command("refresh")
-    .description("Refresh digest metadata for an already-buried skill version")
+    .description("Refresh digest metadata for an already-buried artifact version")
     .argument(
       "<target-folder>",
       "Path to a buried version, its skill directory, or a file inside it"

@@ -314,7 +314,7 @@ developer_instructions = "Follow reviewer v1.0.0"
       ]);
 
       expect(result.exitCode).toBe(1);
-      expect(result.stderr).toContain("Symlinked subagent files are not supported");
+      expect(result.stderr).toContain("Symlinked artifact paths are not supported");
     },
     TEST_TIMEOUT
   );
