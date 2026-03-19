@@ -4,10 +4,20 @@ default:
     @just --list
 
 install:
-    corepack pnpm install
+    pnpm install
 
 build:
-    corepack pnpm run build
+    pnpm run build
 
 test:
-    corepack pnpm test
+    pnpm test
+
+skills:
+    pnpm exec tsx src/cli.ts fetch
+
+docs:
+    pnpm dlx docpup@0.1.9 generate
+
+context:
+    just skills
+    just docs

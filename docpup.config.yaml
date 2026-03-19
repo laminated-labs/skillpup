@@ -1,0 +1,40 @@
+docsDir: documentation/external
+indicesDir: documentation/external/indices
+
+gitignore:
+  addDocsDir: true
+  addIndexFiles: true
+  sectionHeader: "Docpup generated docs"
+
+concurrency: 2
+
+repos:
+  - name: codex-docs
+    urls:
+      - https://developers.openai.com/codex/skills
+      - https://developers.openai.com/codex/subagents
+      - https://developers.openai.com/codex/guides/agents-md
+      - https://developers.openai.com/codex/config-reference
+    selector: main
+
+  - name: node-api
+    urls:
+      - https://nodejs.org/docs/latest-v24.x/api/fs.html
+      - https://nodejs.org/docs/latest-v24.x/api/path.html
+      - https://nodejs.org/docs/latest-v24.x/api/process.html
+
+  - name: typescript-docs
+    urls:
+      - https://www.typescriptlang.org/docs/handbook/modules.html
+      - https://www.typescriptlang.org/tsconfig/
+
+  - name: vitest-docs
+    urls:
+      - https://vitest.dev/guide/
+      - https://vitest.dev/config/
+      - https://vitest.dev/guide/mocking
+
+  - name: commander-readme
+    repo: https://github.com/tj/commander.js
+    sourcePath: Readme.md
+    ref: v14.0.3
