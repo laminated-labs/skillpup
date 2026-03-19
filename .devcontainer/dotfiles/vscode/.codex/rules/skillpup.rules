@@ -1,0 +1,67 @@
+# Codex allowlist for skillpup.
+
+prefix_rule(
+    pattern = ["rg"],
+    decision = "allow",
+    justification = "Repo search is safe.",
+)
+
+prefix_rule(
+    pattern = ["ls"],
+    decision = "allow",
+    justification = "List files.",
+)
+
+prefix_rule(
+    pattern = ["pwd"],
+    decision = "allow",
+    justification = "Show working directory.",
+)
+
+prefix_rule(
+    pattern = ["find"],
+    decision = "allow",
+    justification = "Inspect the repository tree.",
+)
+
+prefix_rule(
+    pattern = ["sed"],
+    decision = "allow",
+    justification = "Read file excerpts.",
+)
+
+prefix_rule(
+    pattern = ["cat"],
+    decision = "allow",
+    justification = "Read files.",
+)
+
+prefix_rule(
+    pattern = ["jq"],
+    decision = "allow",
+    justification = "Inspect JSON files and command output.",
+)
+
+prefix_rule(
+    pattern = ["git", ["status", "diff", "log", "branch", "rev-parse", "ls-files", "show"]],
+    decision = "allow",
+    justification = "Read-only git inspection.",
+)
+
+prefix_rule(
+    pattern = ["pnpm", ["install", "i", "build", "test", "exec", "dlx", "run"]],
+    decision = "allow",
+    justification = "Node package workflows for this repo.",
+)
+
+prefix_rule(
+    pattern = ["just", ["install", "build", "test", "skills", "docs", "context"]],
+    decision = "allow",
+    justification = "Repo task runners.",
+)
+
+prefix_rule(
+    pattern = ["node"],
+    decision = "allow",
+    justification = "Local Node-based inspection and repo tooling.",
+)

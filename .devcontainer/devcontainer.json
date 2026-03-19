@@ -1,0 +1,62 @@
+{
+  "name": "skillpup",
+  "image": "mcr.microsoft.com/devcontainers/base:trixie",
+  "remoteUser": "vscode",
+  "workspaceFolder": "/workspaces/skillpup",
+  "postCreateCommand": ".devcontainer/postcreate.sh",
+  "postStartCommand": ".devcontainer/scripts/sync-dotfiles.sh",
+  "postAttachCommand": ".devcontainer/scripts/sync-dotfiles.sh",
+  "securityOpt": [
+    "seccomp=unconfined",
+    "apparmor=unconfined"
+  ],
+  "containerEnv": {
+    "PNPM_HOME": "/home/vscode/.local/share/pnpm",
+    "PROMPT_TAG": "skillpup"
+  },
+  "remoteEnv": {
+    "PATH": "${containerEnv:PNPM_HOME}:${containerEnv:PATH}"
+  },
+  "mounts": [
+    "source=skillpup-codex-data,target=/home/vscode/.codex,type=volume",
+    "source=skillpup-gh-config,target=/home/vscode/.config/gh,type=volume",
+    "source=skillpup-pnpm-cache,target=/home/vscode/.local/share/pnpm,type=volume"
+  ],
+  "features": {
+    "ghcr.io/devcontainers/features/common-utils:2": {
+      "configureZshAsDefaultShell": true
+    },
+    "ghcr.io/devcontainers/features/node:1": {
+      "version": "24",
+      "installYarnUsingApt": false
+    },
+    "ghcr.io/devcontainers/features/github-cli:1": {},
+    "ghcr.io/devcontainers-extra/features/ripgrep:1": {},
+    "ghcr.io/devcontainers-extra/features/apt-packages:1": {
+      "packages": "bubblewrap,jq,just,polkitd,stow"
+    }
+  },
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "openai.chatgpt",
+        "GitHub.vscode-github-actions",
+        "esbenp.prettier-vscode",
+        "tamasfe.even-better-toml"
+      ]
+    }
+  },
+  "forwardPorts": [1455, 46439],
+  "portsAttributes": {
+    "1455": {
+      "label": "codex-auth",
+      "onAutoForward": "silent",
+      "requireLocalPort": true
+    },
+    "46439": {
+      "label": "codex-mcp-auth",
+      "onAutoForward": "silent",
+      "requireLocalPort": true
+    }
+  }
+}
