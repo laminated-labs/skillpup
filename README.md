@@ -52,13 +52,13 @@ node dist/cli.js --help
 
 ## Contributor Bootstrap
 
-This repo ships a small contributor bootstrap inspired by the larger platform setup:
+This repo ships a small contributor bootstrap inspired by the setup Laminated Labs uses across many projects:
 
 - `.devcontainer/` provides a single-container Node 24 environment with `gh`, `jq`, `just`, `ripgrep`, `bubblewrap`, `docpup`, and `codex`
 - `.devcontainer/dotfiles/` stores the devcontainer-managed Codex config and rules, synced into `~/.codex/` with GNU Stow
-- `skillpup.config.yaml` dogfoods the laminated skills registry for repo support skills
+- `skillpup.config.yaml` dogfoods the Laminated Labs skills registry for repo support skills (currently closed source, but hopefully not for long!)
 - `docpup.config.yaml` builds a compact local docs cache for the CLI surface this repo touches most often
-- `AGENTS.md` documents the expected contributor workflow for agents and humans
+- `AGENTS.md` documents the expected workflow for agents 
 
 Useful commands from the repo root:
 
