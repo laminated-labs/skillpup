@@ -2,7 +2,7 @@
   "name": "skillpup",
   "image": "mcr.microsoft.com/devcontainers/base:trixie",
   "remoteUser": "vscode",
-  "workspaceFolder": "/workspaces/skillpup",
+  "workspaceFolder": "/workspaces/${localWorkspaceFolderBasename}",
   "postCreateCommand": ".devcontainer/postcreate.sh",
   "postStartCommand": ".devcontainer/scripts/sync-dotfiles.sh",
   "postAttachCommand": ".devcontainer/scripts/sync-dotfiles.sh",
