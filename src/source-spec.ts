@@ -1,7 +1,21 @@
+import path from "node:path";
+
 export type ParsedGitHubTreeUrl = {
   repoUrl: string;
   refAndPathSegments: string[];
 };
+
+export function isScpLikeGitUrl(sourceUrl: string) {
+  return /^[^@]+@[^:]+:.+/.test(sourceUrl);
+}
+
+export function isWindowsAbsolutePath(sourcePath: string) {
+  return /^[a-zA-Z]:[\\/]/.test(sourcePath) || /^\\\\[^\\]+\\[^\\]+/.test(sourcePath);
+}
+
+export function isAbsoluteLocalSourcePath(sourcePath: string) {
+  return path.isAbsolute(sourcePath) || isWindowsAbsolutePath(sourcePath);
+}
 
 export function parseGitHubTreeUrl(source: string): ParsedGitHubTreeUrl | null {
   let parsedUrl: URL;
@@ -45,4 +59,25 @@ export async function splitGitHubTreeRefAndPath(
   }
 
   return null;
+}
+
+export function normalizeStoredSourceUrl(sourceUrl: string, cwd: string) {
+  if (parseGitHubTreeUrl(sourceUrl) || isScpLikeGitUrl(sourceUrl)) {
+    return sourceUrl;
+  }
+
+  if (isAbsoluteLocalSourcePath(sourceUrl)) {
+    return sourceUrl;
+  }
+
+  try {
+    const parsedUrl = new URL(sourceUrl);
+    if (parsedUrl.protocol) {
+      return sourceUrl;
+    }
+  } catch {
+    // Fall through to local path normalization.
+  }
+
+  return path.resolve(cwd, sourceUrl);
 }

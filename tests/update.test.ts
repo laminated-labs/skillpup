@@ -1,9 +1,11 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { stringify } from "yaml";
 import { listRemoteRefs } from "../src/git.js";
 import {
   isScpLikeGitUrl,
+  isWindowsAbsolutePath,
   resolveSourceLookupTarget,
 } from "../src/registry-update.js";
 import type { SkillpupConfig, SkillpupLockfile } from "../src/types.js";
@@ -85,6 +87,15 @@ describe("skillpup update flows", () => {
     ).resolves.toBe(sourceUrl);
   });
 
+  it("treats Windows absolute paths as local lookup targets", async () => {
+    const sourceUrl = "C:/Users/example/reviewer";
+
+    expect(isWindowsAbsolutePath(sourceUrl)).toBe(true);
+    await expect(
+      resolveSourceLookupTarget(sourceUrl, "/tmp/registry", "/tmp/cwd")
+    ).resolves.toBe(sourceUrl);
+  });
+
   it(
     "reports newer registry versions for configured project artifacts",
     async () => {
@@ -132,6 +143,29 @@ describe("skillpup update flows", () => {
           "utf8"
         )
       ).toBe("template-v1.1.0\n");
+    },
+    TEST_TIMEOUT
+  );
+
+  it(
+    "deduplicates repeated project update selectors",
+    async () => {
+      const { registryDir, consumerDir } = await setupConsumerUpdateScenario(
+        rootDir,
+        "project-deduped"
+      );
+
+      const result = await runCli(consumerDir, [
+        "update",
+        "reviewer",
+        "reviewer",
+        "--apply",
+        "--registry",
+        registryDir,
+      ]);
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout.trim()).toBe("Updated reviewer@v1.1.0");
     },
     TEST_TIMEOUT
   );
@@ -194,6 +228,38 @@ describe("skillpup update flows", () => {
 
       expect(result.exitCode).toBe(1);
       expect(result.stderr).toContain("Cannot prompt for project updates");
+    },
+    TEST_TIMEOUT
+  );
+
+  it(
+    "applies available project updates with --all even when other configured artifacts fail to check",
+    async () => {
+      const { registryDir, consumerDir } = await setupConsumerUpdateScenario(
+        rootDir,
+        "project-apply-all-errors"
+      );
+      const configPath = path.join(consumerDir, "skillpup.config.yaml");
+      const config = await readYamlFile<SkillpupConfig>(configPath);
+      config.skills.push({ name: "missing-skill" });
+      await fs.writeFile(configPath, stringify(config), "utf8");
+
+      const result = await runCli(consumerDir, [
+        "update",
+        "--apply",
+        "--all",
+        "--registry",
+        registryDir,
+      ]);
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain("Updated reviewer@v1.1.0");
+
+      const updatedConfig = await readYamlFile<SkillpupConfig>(configPath);
+      expect(updatedConfig.skills).toEqual([
+        { name: "reviewer", version: "v1.1.0" },
+        { name: "missing-skill" },
+      ]);
     },
     TEST_TIMEOUT
   );
@@ -296,6 +362,125 @@ describe("skillpup update flows", () => {
       expect(
         await fileExists(
           path.join(registryDir, "skills/branch-source/versions", updatedCommit, "skill/SKILL.md")
+        )
+      ).toBe(true);
+    },
+    TEST_TIMEOUT
+  );
+
+  it(
+    "publishes available registry updates with --all even when other artifacts are unsupported",
+    async () => {
+      const registryDir = path.join(rootDir, "registry-apply-all-unsupported");
+      await runCli(rootDir, ["bury", "init", registryDir]);
+      await initTestRepo(registryDir);
+
+      const taggedSource = await createSkillRepo({
+        skillName: "curator-all",
+        versions: ["v1.0.0", "v1.1.0"],
+      });
+      await runCli(rootDir, [
+        "bury",
+        taggedSource.repoDir,
+        "--ref",
+        "v1.0.0",
+        "--version",
+        "v1.0.0",
+        "--registry",
+        registryDir,
+      ]);
+
+      const pinnedSourceDir = path.join(rootDir, "pinned-source");
+      await initTestRepo(pinnedSourceDir);
+      await fs.writeFile(path.join(pinnedSourceDir, "SKILL.md"), "# pinned-source\n", "utf8");
+      await fs.writeFile(path.join(pinnedSourceDir, "template.txt"), "pinned\n", "utf8");
+      await commitAll(pinnedSourceDir, "initial");
+      const pinnedCommit = await runGitCapture(["rev-parse", "HEAD"], pinnedSourceDir);
+      await runCli(rootDir, [
+        "bury",
+        pinnedSourceDir,
+        "--ref",
+        pinnedCommit,
+        "--version",
+        pinnedCommit,
+        "--registry",
+        registryDir,
+      ]);
+
+      const result = await runCli(rootDir, [
+        "bury",
+        "update",
+        "--apply",
+        "--all",
+        "--registry",
+        registryDir,
+      ]);
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain("Published curator-all@v1.1.0");
+      expect(
+        await fileExists(
+          path.join(registryDir, "skills/curator-all/versions/v1.1.0/skill/SKILL.md")
+        )
+      ).toBe(true);
+    },
+    TEST_TIMEOUT
+  );
+
+  it(
+    "stores local source paths as absolute metadata and reuses them from a different cwd",
+    async () => {
+      const registryDir = path.join(rootDir, "registry-relative-source");
+      await runCli(rootDir, ["bury", "init", registryDir]);
+      await initTestRepo(registryDir);
+
+      const sourceDir = path.join(rootDir, "relative-source");
+      await initTestRepo(sourceDir);
+      await fs.writeFile(path.join(sourceDir, "SKILL.md"), "# relative-source\n\nVersion 1\n", "utf8");
+      await fs.writeFile(path.join(sourceDir, "template.txt"), "template-1\n", "utf8");
+      await commitAll(sourceDir, "initial");
+
+      await runCli(rootDir, [
+        "bury",
+        "relative-source",
+        "--ref",
+        "main",
+        "--registry",
+        registryDir,
+      ]);
+
+      const metadata = await readYamlFile<{ sourceUrl: string }>(
+        path.join(
+          registryDir,
+          "skills/relative-source/versions",
+          await runGitCapture(["rev-parse", "HEAD"], sourceDir),
+          "metadata.yaml"
+        )
+      );
+      expect(metadata.sourceUrl).toBe(sourceDir);
+
+      await fs.writeFile(path.join(sourceDir, "SKILL.md"), "# relative-source\n\nVersion 2\n", "utf8");
+      await fs.writeFile(path.join(sourceDir, "template.txt"), "template-2\n", "utf8");
+      await commitAll(sourceDir, "second");
+      const updatedCommit = await runGitCapture(["rev-parse", "HEAD"], sourceDir);
+
+      const result = await runCli(registryDir, [
+        "bury",
+        "update",
+        "relative-source",
+        "--apply",
+      ]);
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain(`Published relative-source@${updatedCommit}`);
+      expect(
+        await fileExists(
+          path.join(
+            registryDir,
+            "skills/relative-source/versions",
+            updatedCommit,
+            "skill/SKILL.md"
+          )
         )
       ).toBe(true);
     },

@@ -6,6 +6,7 @@ import { loadLockfile } from "./lockfile.js";
 import {
   artifactKey,
   buildConfiguredKindPreference,
+  buildDesiredArtifactOrder,
   createMetadataReader,
   createVersionReader,
   getConfiguredArtifacts,
@@ -105,7 +106,7 @@ function resolveRequestedArtifacts(
     configuredArtifacts.map((entry) => [artifactKey(entry.kind!, entry.name), entry] as const)
   );
 
-  return artifactSpecs.map((spec) => {
+  const resolvedArtifacts = artifactSpecs.map((spec) => {
     const parsed = parseUpdateSelector(spec);
     if (parsed.kind) {
       const configured = configuredByKey.get(artifactKey(parsed.kind, parsed.name));
@@ -129,6 +130,14 @@ function resolveRequestedArtifacts(
 
     return configuredByKey.get(artifactKey(configuredKind, parsed.name))!;
   });
+
+  return buildDesiredArtifactOrder(
+    resolvedArtifacts.map((entry) => ({
+      kind: entry.kind!,
+      name: entry.name,
+      version: entry.version,
+    }))
+  );
 }
 
 export async function updateProjectArtifacts(
@@ -254,9 +263,13 @@ export async function updateProjectArtifacts(
     }
 
     const candidateChoices = buildSelectionChoices(entries);
-    const explicitErrors = entries.filter(
-      (entry) => requestedKeys.has(artifactKey(entry.kind, entry.name)) && entry.status === "error"
-    );
+    const explicitErrors =
+      options.artifactSpecs && options.artifactSpecs.length > 0
+        ? entries.filter(
+            (entry) =>
+              requestedKeys.has(artifactKey(entry.kind, entry.name)) && entry.status === "error"
+          )
+        : [];
     if (explicitErrors.length > 0) {
       throw new Error(
         explicitErrors

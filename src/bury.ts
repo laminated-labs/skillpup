@@ -34,6 +34,7 @@ import {
   validateArtifactName,
 } from "./utils.js";
 import {
+  normalizeStoredSourceUrl,
   parseGitHubTreeUrl,
   splitGitHubTreeRefAndPath,
 } from "./source-spec.js";
@@ -169,8 +170,9 @@ export async function burySkill(options: {
   const cwd = options.cwd ?? process.cwd();
   const registryRoot = path.resolve(cwd, options.registry ?? ".");
   const backend = await openRegistryForWrite(registryRoot);
+  const storedSourceUrl = normalizeStoredSourceUrl(options.sourceGitUrl, cwd);
   const parsedGitHubTreeUrl = parseGitHubTreeUrl(options.sourceGitUrl);
-  const cloneSourceUrl = parsedGitHubTreeUrl?.repoUrl ?? options.sourceGitUrl;
+  const cloneSourceUrl = parsedGitHubTreeUrl?.repoUrl ?? storedSourceUrl;
 
   const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "skillpup-source-"));
   const cloneDir = path.join(tempRoot, "source");
@@ -244,7 +246,7 @@ export async function burySkill(options: {
       name: skillName,
       version,
       sourceDir: selectedArtifact.sourceDir,
-      sourceUrl: options.sourceGitUrl,
+      sourceUrl: storedSourceUrl,
       sourcePath,
       sourceRef,
       sourceCommit,

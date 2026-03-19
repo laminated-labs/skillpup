@@ -19,7 +19,12 @@ import {
   resolveRequestedEntries,
 } from "./registry-artifacts.js";
 import { findContainingRegistryRoot } from "./registry-root.js";
-import { parseGitHubTreeUrl } from "./source-spec.js";
+import {
+  isAbsoluteLocalSourcePath,
+  isScpLikeGitUrl,
+  isWindowsAbsolutePath,
+  parseGitHubTreeUrl,
+} from "./source-spec.js";
 import {
   defaultUpdatePrompts,
   type UpdatePrompts,
@@ -147,15 +152,17 @@ function getTagName(ref: string) {
   return ref.startsWith("refs/tags/") ? ref.slice("refs/tags/".length) : null;
 }
 
-export function isScpLikeGitUrl(sourceUrl: string) {
-  return /^[^@]+@[^:]+:.+/.test(sourceUrl);
-}
+export { isScpLikeGitUrl, isWindowsAbsolutePath };
 
 export async function resolveSourceLookupTarget(
   sourceUrl: string,
   registryRoot: string,
   cwd: string
 ) {
+  if (isAbsoluteLocalSourcePath(sourceUrl)) {
+    return sourceUrl;
+  }
+
   const parsedGitHubTreeUrl = parseGitHubTreeUrl(sourceUrl);
   if (parsedGitHubTreeUrl) {
     return parsedGitHubTreeUrl.repoUrl;
@@ -172,10 +179,6 @@ export async function resolveSourceLookupTarget(
   }
 
   if (isScpLikeGitUrl(sourceUrl)) {
-    return sourceUrl;
-  }
-
-  if (path.isAbsolute(sourceUrl)) {
     return sourceUrl;
   }
 
@@ -398,11 +401,14 @@ export async function updateRegistryArtifacts(
   }
 
   const candidateChoices = buildSelectionChoices(entries);
-  const explicitFailures = entries.filter(
-    (entry) =>
-      requestedKeys.has(artifactKey(entry.kind, entry.name)) &&
-      (entry.status === "error" || entry.status === "unsupported")
-  );
+  const explicitFailures =
+    options.artifactSpecs && options.artifactSpecs.length > 0
+      ? entries.filter(
+          (entry) =>
+            requestedKeys.has(artifactKey(entry.kind, entry.name)) &&
+            (entry.status === "error" || entry.status === "unsupported")
+        )
+      : [];
   if (explicitFailures.length > 0) {
     throw new Error(
       explicitFailures
