@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "repos": {
+    "commander-readme": {
+      "name": "commander-readme",
+      "repoUrl": "https://github.com/tj/commander.js",
+      "requestedRef": "v14.0.3",
+      "resolvedRef": "v14.0.3",
+      "commitSha": "b7d43804d27bc90fad1c201470ac528971b9888c",
+      "processingHash": "927b7b4d0a80b1ba793c895bacfd55be645c138bf1746af776cda7ed190770c0"
+    }
+  }
+}

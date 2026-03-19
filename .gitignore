@@ -3,3 +3,8 @@ node_modules/
 dist/
 coverage/
 *.log
+/.agents/skills/
+
+# Docpup generated docs
+documentation/external/
+documentation/external/indices/

@@ -1,0 +1,17 @@
+registry:
+  type: git
+  url: https://github.com/laminated-labs/skills
+skillsDir: .agents/skills
+subagentsDir: .codex/agents
+skills:
+  - name: gh-address-comments
+    version: ce2535c009ef92f4065be9626ae695c9ecd77e61
+  - name: gh-fix-ci
+    version: ce2535c009ef92f4065be9626ae695c9ecd77e61
+  - name: pr-writer
+    version: 360070a6ed7a7530ff1df26adb285807f4483ffa
+  - name: exec-plan
+    version: 4bb677dda909479a817e879ca25239728ab1b1b9
+  - name: linear
+    version: ce2535c009ef92f4065be9626ae695c9ecd77e61
+subagents: []
