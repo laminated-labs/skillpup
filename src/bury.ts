@@ -25,7 +25,6 @@ import {
   readSubagentManifest,
 } from "./subagents.js";
 import {
-  REGISTRY_FILE_BASENAME,
   canonicalRegistryPath,
   compareSemverDescending,
   formatArtifactRef,
@@ -35,9 +34,11 @@ import {
   validateArtifactName,
 } from "./utils.js";
 import {
+  normalizeStoredSourceUrl,
   parseGitHubTreeUrl,
   splitGitHubTreeRefAndPath,
 } from "./source-spec.js";
+import { findContainingRegistryRoot } from "./registry-root.js";
 
 function deriveDefaultSkillName(sourceGitUrl: string, skillPath?: string) {
   if (skillPath) {
@@ -50,27 +51,6 @@ function deriveDefaultSkillName(sourceGitUrl: string, skillPath?: string) {
     .replace(/\/+$/, "")
     .replace(/\.git$/, "");
   return path.posix.basename(normalizedSource);
-}
-
-async function findContainingRegistryRoot(targetPath: string) {
-  let currentPath = path.resolve(targetPath);
-  const stats = await fs.stat(currentPath).catch(() => null);
-  if (stats?.isFile()) {
-    currentPath = path.dirname(currentPath);
-  }
-
-  while (true) {
-    const markerPath = path.join(currentPath, REGISTRY_FILE_BASENAME);
-    if (await pathExists(markerPath)) {
-      return currentPath;
-    }
-
-    const parentPath = path.dirname(currentPath);
-    if (parentPath === currentPath) {
-      return null;
-    }
-    currentPath = parentPath;
-  }
 }
 
 function inferBuriedVersionFromTarget(targetPath: string, registryRoot: string) {
@@ -190,8 +170,9 @@ export async function burySkill(options: {
   const cwd = options.cwd ?? process.cwd();
   const registryRoot = path.resolve(cwd, options.registry ?? ".");
   const backend = await openRegistryForWrite(registryRoot);
+  const storedSourceUrl = normalizeStoredSourceUrl(options.sourceGitUrl, cwd);
   const parsedGitHubTreeUrl = parseGitHubTreeUrl(options.sourceGitUrl);
-  const cloneSourceUrl = parsedGitHubTreeUrl?.repoUrl ?? options.sourceGitUrl;
+  const cloneSourceUrl = parsedGitHubTreeUrl?.repoUrl ?? storedSourceUrl;
 
   const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "skillpup-source-"));
   const cloneDir = path.join(tempRoot, "source");
@@ -265,7 +246,7 @@ export async function burySkill(options: {
       name: skillName,
       version,
       sourceDir: selectedArtifact.sourceDir,
-      sourceUrl: options.sourceGitUrl,
+      sourceUrl: storedSourceUrl,
       sourcePath,
       sourceRef,
       sourceCommit,

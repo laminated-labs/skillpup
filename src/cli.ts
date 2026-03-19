@@ -3,6 +3,14 @@ import { Command } from "commander";
 import { buryInit, burySkill, refreshBuriedSkill } from "./bury.js";
 import { fetchSkills } from "./fetch.js";
 import { runWithSpinner } from "./progress.js";
+import {
+  formatRegistryUpdateSummary,
+  updateRegistryArtifacts,
+} from "./registry-update.js";
+import {
+  formatProjectUpdateSummary,
+  updateProjectArtifacts,
+} from "./update.js";
 import { formatArtifactRef } from "./utils.js";
 
 const require = createRequire(import.meta.url);
@@ -16,6 +24,42 @@ export async function runCli(argv: string[] = process.argv) {
     .name("skillpup")
     .description("Private registry workflow for agent skills and subagents.")
     .version(packageJson.version);
+
+  program
+    .command("update")
+    .argument("[artifacts...]", "Configured artifact names or kind:name selectors")
+    .option("--registry <path-or-git-url>", "Override the configured registry for this run")
+    .option("--apply", "Apply selected available updates")
+    .option("--all", "When used with --apply, apply every available update")
+    .option("--commit", "Commit config and lockfile changes when applying")
+    .action(async (artifacts: string[], options) => {
+      const result = await updateProjectArtifacts({
+        artifactSpecs: artifacts,
+        registry: options.registry,
+        apply: options.apply,
+        all: options.all,
+        commit: options.commit,
+      });
+
+      if (!options.apply) {
+        for (const line of formatProjectUpdateSummary(result.entries)) {
+          console.log(line);
+        }
+        return;
+      }
+
+      const updatedRefs = result.appliedEntries
+        .filter(
+          (entry) => entry.status === "version-bump" || entry.status === "digest-refresh"
+        )
+        .map((entry) => formatArtifactRef(entry.name, entry.targetVersion, entry.kind));
+      if (updatedRefs.length > 0) {
+        console.log(`Updated ${updatedRefs.join(", ")}`);
+        return;
+      }
+
+      console.log("No project updates applied");
+    });
 
   program
     .command("fetch")
@@ -128,6 +172,45 @@ export async function runCli(argv: string[] = process.argv) {
 
       const verb = result.digestChanged ? "Refreshed" : "Verified";
       console.log(`${verb} ${result.metadata.name}@${result.metadata.version}`);
+    });
+
+  bury
+    .command("update")
+    .description("Check for newer upstream artifact revisions and optionally publish them")
+    .argument("[artifacts...]", "Artifact names or kind:name selectors")
+    .option("--registry <local-path>", "Local path to the registry; inferred when omitted")
+    .option("--apply", "Publish selected available updates")
+    .option("--all", "When used with --apply, publish every available update")
+    .option("--commit", "Commit registry changes after publishing")
+    .action(async (artifacts: string[], options) => {
+      const result = await updateRegistryArtifacts({
+        artifactSpecs: artifacts,
+        registry: options.registry,
+        apply: options.apply,
+        all: options.all,
+        commit: options.commit,
+      });
+
+      if (!options.apply) {
+        for (const line of formatRegistryUpdateSummary(result.entries)) {
+          console.log(line);
+        }
+        return;
+      }
+
+      const publishedRefs = result.published.map((entry) =>
+        formatArtifactRef(
+          entry.metadata.name,
+          entry.metadata.version,
+          entry.metadata.kind
+        )
+      );
+      if (publishedRefs.length > 0) {
+        console.log(`Published ${publishedRefs.join(", ")}`);
+        return;
+      }
+
+      console.log("No registry updates applied");
     });
 
   await program.parseAsync(argv);

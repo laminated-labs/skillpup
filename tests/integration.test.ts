@@ -2,6 +2,7 @@ import fs from "node:fs/promises";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { stringify } from "yaml";
 import type { SkillpupConfig, SkillpupLockfile } from "../src/types.js";
 import {
   commitAll,
@@ -178,6 +179,44 @@ describe("skillpup integration", () => {
           path.join(consumerDir, ".agents/skills/courier-skills/.git")
         )
       ).toBe(false);
+    },
+    TEST_TIMEOUT
+  );
+
+  it(
+    "resolves relative config registry paths from the config directory when fetching from nested subdirectories",
+    async () => {
+      const registryDir = path.join(rootDir, "registry-fetch-relative-config");
+      await runCli(rootDir, ["bury", "init", registryDir]);
+      await initTestRepo(registryDir);
+
+      const source = await createSkillRepo({
+        skillName: "reviewer",
+        versions: ["v1.0.0"],
+      });
+      await runCli(rootDir, ["bury", source.repoDir, "--registry", registryDir]);
+
+      const consumerDir = path.join(rootDir, "consumer-fetch-relative-config");
+      await initTestRepo(consumerDir);
+      await runCli(consumerDir, ["fetch", "reviewer", "--registry", registryDir]);
+
+      const configPath = path.join(consumerDir, "skillpup.config.yaml");
+      const config = await readYamlFile<SkillpupConfig>(configPath);
+      config.registry.url = "../registry-fetch-relative-config";
+      await fs.writeFile(configPath, stringify(config), "utf8");
+
+      await fs.rm(path.join(consumerDir, ".agents"), { recursive: true, force: true });
+      await fs.rm(path.join(consumerDir, "skillpup.lock.yaml"), { force: true });
+
+      const nestedDir = path.join(consumerDir, "packages", "app");
+      await fs.mkdir(nestedDir, { recursive: true });
+
+      const result = await runCli(nestedDir, ["fetch"]);
+
+      expect(result.exitCode).toBe(0);
+      expect(
+        await fileExists(path.join(consumerDir, ".agents/skills/reviewer/SKILL.md"))
+      ).toBe(true);
     },
     TEST_TIMEOUT
   );

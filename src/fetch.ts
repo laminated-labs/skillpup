@@ -2,14 +2,17 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import type {
-  ArtifactConfigEntry,
   ArtifactKind,
   ArtifactVersionMetadata,
   FetchResult,
-  SkillIndexVersion,
   SkillpupConfig,
 } from "./types.js";
-import { getDefaultConfigPath, loadProjectConfig, writeProjectConfig } from "./config.js";
+import {
+  getDefaultConfigPath,
+  loadProjectConfig,
+  resolveConfiguredRegistryUrl,
+  writeProjectConfig,
+} from "./config.js";
 import { defaultFetchPrompts, type FetchPrompts, type GenerateMergeStrategy } from "./fetch-prompts.js";
 import { loadLockfile, writeLockfile } from "./lockfile.js";
 import { computeDirectoryDigest, copyDirectoryStrict, ensureDir, removePath } from "./fs-utils.js";
@@ -27,13 +30,23 @@ import { buildSubagentBundleFileName } from "./subagents.js";
 import {
   DEFAULT_SUBAGENTS_DIR,
   LOCKFILE_BASENAME,
-  compareSemverDescending,
   formatArtifactRef,
   formatArtifactSpecifier,
   parseArtifactSpecifier,
-  parseSemverLike,
   resolveInside,
 } from "./utils.js";
+import {
+  artifactKey,
+  buildConfiguredKindPreference,
+  buildDesiredEntryOrder,
+  createMetadataReader,
+  createVersionReader,
+  getConfiguredArtifacts,
+  listRegistryArtifacts,
+  mergeGeneratedEntries,
+  type ResolvedRequestedArtifact,
+  resolveRequestedEntries,
+} from "./registry-artifacts.js";
 
 type FetchOptions = {
   skillSpecs?: string[];
@@ -47,62 +60,6 @@ type FetchOptions = {
   isInteractive?: boolean;
   prompts?: FetchPrompts;
 };
-
-type RegistryArtifactSummary = {
-  kind: ArtifactKind;
-  name: string;
-  version: string;
-};
-
-type RequestedArtifact = {
-  kind?: ArtifactKind;
-  name: string;
-  version?: string;
-};
-
-type ResolvedRequestedArtifact = {
-  kind: ArtifactKind;
-  name: string;
-  version: string;
-};
-
-type VersionedEntry = {
-  version: string;
-  buriedAt: string;
-};
-
-function artifactKey(kind: ArtifactKind, name: string) {
-  return `${kind}:${name}`;
-}
-
-function buildDesiredArtifactOrder<T extends { kind: ArtifactKind; name: string }>(entries: T[]) {
-  const unique = new Map<string, T>();
-  for (const entry of entries) {
-    unique.set(artifactKey(entry.kind, entry.name), entry);
-  }
-  return Array.from(unique.values());
-}
-
-function buildDesiredEntryOrder<T extends { name: string }>(entries: T[]) {
-  const unique = new Map<string, T>();
-  for (const entry of entries) {
-    unique.set(entry.name, entry);
-  }
-  return Array.from(unique.values());
-}
-
-function chooseHighestVersion<T extends VersionedEntry>(versions: T[]) {
-  const semverVersions = versions.filter((entry) => parseSemverLike(entry.version));
-  if (semverVersions.length > 0) {
-    return [...semverVersions].sort((left, right) =>
-      compareSemverDescending(left.version, right.version)
-    )[0];
-  }
-
-  return [...versions].sort((left, right) =>
-    right.buriedAt.localeCompare(left.buriedAt)
-  )[0];
-}
 
 function buildFetchCommitMessage(
   requestedArtifacts: Array<{ kind: ArtifactKind; name: string }>,
@@ -122,213 +79,6 @@ function buildFetchCommitMessage(
   }
 
   return "chore(skillpup): fetch sync";
-}
-
-function createMetadataReader(
-  registryBackend: Awaited<ReturnType<typeof openRegistryForRead>>["backend"]
-) {
-  const cache = new Map<string, Promise<ArtifactVersionMetadata>>();
-
-  return (kind: ArtifactKind, name: string, version: string) => {
-    const cacheKey = `${kind}:${name}@${version}`;
-    const existing = cache.get(cacheKey);
-    if (existing) {
-      return existing;
-    }
-
-    const next = registryBackend.readVersionMetadataForKind(kind, name, version);
-    cache.set(cacheKey, next);
-    return next;
-  };
-}
-
-function createVersionReader(
-  registryBackend: Awaited<ReturnType<typeof openRegistryForRead>>["backend"]
-) {
-  const cache = new Map<string, Promise<SkillIndexVersion[]>>();
-
-  return (kind: ArtifactKind, name: string) => {
-    const cacheKey = `${kind}:${name}`;
-    const existing = cache.get(cacheKey);
-    if (existing) {
-      return existing;
-    }
-
-    const next = registryBackend.listVersionsForKind(kind, name);
-    cache.set(cacheKey, next);
-    return next;
-  };
-}
-
-async function listRegistryArtifacts(
-  registryBackend: Awaited<ReturnType<typeof openRegistryForRead>>["backend"],
-  readVersions: (kind: ArtifactKind, name: string) => Promise<SkillIndexVersion[]>
-) {
-  const artifacts: RegistryArtifactSummary[] = [];
-
-  for (const kind of ["skill", "subagent"] as const) {
-    const names = await registryBackend.listArtifacts(kind);
-    for (const name of names) {
-      const availableVersions = await readVersions(kind, name);
-      if (availableVersions.length === 0) {
-        continue;
-      }
-
-      artifacts.push({
-        kind,
-        name,
-        version: chooseHighestVersion(availableVersions).version,
-      });
-    }
-  }
-
-  return artifacts.sort((left, right) => {
-    const nameComparison = left.name.localeCompare(right.name);
-    if (nameComparison !== 0) {
-      return nameComparison;
-    }
-    return left.kind.localeCompare(right.kind);
-  });
-}
-
-function buildConfiguredKindPreference(config: SkillpupConfig) {
-  const configuredKinds = new Map<string, ArtifactKind | "ambiguous">();
-
-  for (const skill of config.skills) {
-    configuredKinds.set(skill.name, "skill");
-  }
-  for (const subagent of config.subagents) {
-    const existing = configuredKinds.get(subagent.name);
-    configuredKinds.set(
-      subagent.name,
-      existing && existing !== "subagent" ? "ambiguous" : "subagent"
-    );
-  }
-
-  return configuredKinds;
-}
-
-async function resolveRequestedKind(
-  requested: RequestedArtifact,
-  configuredKindsByName: Map<string, ArtifactKind | "ambiguous">,
-  readVersions: (kind: ArtifactKind, name: string) => Promise<SkillIndexVersion[]>
-) {
-  if (requested.kind) {
-    const versions = await readVersions(requested.kind, requested.name);
-    if (versions.length === 0) {
-      throw new Error(
-        `${requested.kind === "skill" ? "Skill" : "Subagent"} "${requested.name}" was not found in the registry.`
-      );
-    }
-    return requested.kind;
-  }
-
-  const configuredKind = configuredKindsByName.get(requested.name);
-  if (configuredKind === "ambiguous") {
-    throw new Error(
-      `Artifact "${requested.name}" is configured as both a skill and a subagent. Use skill:${requested.name} or subagent:${requested.name}.`
-    );
-  }
-
-  const availableKinds: ArtifactKind[] = [];
-  for (const kind of ["skill", "subagent"] as const) {
-    const versions = await readVersions(kind, requested.name);
-    if (versions.length > 0) {
-      availableKinds.push(kind);
-    }
-  }
-
-  if (configuredKind && availableKinds.includes(configuredKind)) {
-    return configuredKind;
-  }
-
-  if (configuredKind) {
-    const kindLabel = configuredKind === "skill" ? "Skill" : "Subagent";
-    throw new Error(
-      `${kindLabel} "${requested.name}" is configured for this project but was not found in the registry.`
-    );
-  }
-
-  if (availableKinds.length === 1) {
-    return availableKinds[0]!;
-  }
-
-  if (availableKinds.length === 0) {
-    throw new Error(`Artifact "${requested.name}" was not found in the registry.`);
-  }
-
-  throw new Error(
-    `Artifact "${requested.name}" exists as both a skill and a subagent. Use skill:${requested.name} or subagent:${requested.name}.`
-  );
-}
-
-async function resolveRequestedEntries(
-  requestedEntries: RequestedArtifact[],
-  configuredKindsByName: Map<string, ArtifactKind | "ambiguous">,
-  readVersions: (kind: ArtifactKind, name: string) => Promise<SkillIndexVersion[]>,
-  readVersionMetadata: (
-    kind: ArtifactKind,
-    name: string,
-    version: string
-  ) => Promise<ArtifactVersionMetadata>
-) {
-  const resolvedEntries: ResolvedRequestedArtifact[] = [];
-
-  for (const requested of requestedEntries) {
-    const kind = await resolveRequestedKind(
-      requested,
-      configuredKindsByName,
-      readVersions
-    );
-    const availableVersions = await readVersions(kind, requested.name);
-    if (availableVersions.length === 0) {
-      throw new Error(
-        `${kind === "skill" ? "Skill" : "Subagent"} "${requested.name}" was not found in the registry.`
-      );
-    }
-
-    let resolvedVersion = requested.version;
-    if (resolvedVersion) {
-      await readVersionMetadata(kind, requested.name, resolvedVersion);
-    } else {
-      resolvedVersion = chooseHighestVersion(availableVersions).version;
-    }
-
-    resolvedEntries.push({
-      kind,
-      name: requested.name,
-      version: resolvedVersion,
-    });
-  }
-
-  return buildDesiredArtifactOrder(resolvedEntries);
-}
-
-function mergeGeneratedEntries(
-  existingEntries: ArtifactConfigEntry[],
-  selectedEntries: ResolvedRequestedArtifact[],
-  kind: ArtifactKind
-) {
-  const selectedByName = new Map(
-    selectedEntries
-      .filter((entry) => entry.kind === kind)
-      .map((entry) => [entry.name, { name: entry.name, version: entry.version }] as const)
-  );
-  const merged: ArtifactConfigEntry[] = [];
-
-  for (const entry of existingEntries) {
-    const selectedEntry = selectedByName.get(entry.name);
-    if (selectedEntry) {
-      merged.push(selectedEntry);
-      selectedByName.delete(entry.name);
-      continue;
-    }
-
-    merged.push(entry);
-  }
-
-  merged.push(...selectedByName.values());
-  return buildDesiredEntryOrder(merged);
 }
 
 function applyResolvedEntriesToConfig(
@@ -352,21 +102,6 @@ function applyResolvedEntriesToConfig(
       .filter((entry) => entry.kind === "subagent")
       .map((entry) => ({ name: entry.name, version: entry.version }))
   );
-}
-
-function getConfiguredArtifacts(config: SkillpupConfig): RequestedArtifact[] {
-  return [
-    ...config.skills.map((entry) => ({
-      kind: "skill" as const,
-      name: entry.name,
-      version: entry.version,
-    })),
-    ...config.subagents.map((entry) => ({
-      kind: "subagent" as const,
-      name: entry.name,
-      version: entry.version,
-    })),
-  ];
 }
 
 function validateFetchOptions(options: FetchOptions) {
@@ -433,7 +168,9 @@ export async function fetchSkills(options: FetchOptions = {}): Promise<FetchResu
     subagents: [],
   };
 
-  const effectiveRegistry = options.registry ?? config.registry.url;
+  const effectiveRegistry = options.registry
+    ? options.registry
+    : resolveConfiguredRegistryUrl(config.registry.url, configPath);
   const lockfilePath = path.join(configDir, LOCKFILE_BASENAME);
   const lockfile = await loadLockfile(lockfilePath);
   const previousLockByKey = new Map([
