@@ -147,7 +147,11 @@ function getTagName(ref: string) {
   return ref.startsWith("refs/tags/") ? ref.slice("refs/tags/".length) : null;
 }
 
-async function resolveSourceLookupTarget(
+export function isScpLikeGitUrl(sourceUrl: string) {
+  return /^[^@]+@[^:]+:.+/.test(sourceUrl);
+}
+
+export async function resolveSourceLookupTarget(
   sourceUrl: string,
   registryRoot: string,
   cwd: string
@@ -164,6 +168,10 @@ async function resolveSourceLookupTarget(
     parsedUrl = null;
   }
   if (parsedUrl && parsedUrl.protocol) {
+    return sourceUrl;
+  }
+
+  if (isScpLikeGitUrl(sourceUrl)) {
     return sourceUrl;
   }
 

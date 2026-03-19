@@ -2,6 +2,10 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { listRemoteRefs } from "../src/git.js";
+import {
+  isScpLikeGitUrl,
+  resolveSourceLookupTarget,
+} from "../src/registry-update.js";
 import type { SkillpupConfig, SkillpupLockfile } from "../src/types.js";
 import {
   commitAll,
@@ -71,6 +75,15 @@ describe("skillpup update flows", () => {
     },
     TEST_TIMEOUT
   );
+
+  it("treats scp-style git remotes as remote lookup targets", async () => {
+    const sourceUrl = "git@github.com:laminated-labs/skillpup.git";
+
+    expect(isScpLikeGitUrl(sourceUrl)).toBe(true);
+    await expect(
+      resolveSourceLookupTarget(sourceUrl, "/tmp/registry", "/tmp/cwd")
+    ).resolves.toBe(sourceUrl);
+  });
 
   it(
     "reports newer registry versions for configured project artifacts",

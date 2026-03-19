@@ -242,7 +242,7 @@ Commit behavior:
 
 ### Codex `[agents]` Settings
 
-`skillpup` manages project-scoped subagent files in `.codex/agents`, but it does yet not manage `.codex/config.toml` or global `[agents]` settings such as `max_threads` or `max_depth`.
+`skillpup` manages project-scoped subagent files in `.codex/agents`, but it does not yet manage `.codex/config.toml` or global `[agents]` settings such as `max_threads` or `max_depth`.
 
 ### Skills Directory Detection
 
