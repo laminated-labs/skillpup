@@ -1,4 +1,13 @@
 skills:
+  - name: exec-plan
+    version: 4bb677dda909479a817e879ca25239728ab1b1b9
+    registryPath: skills/exec-plan/versions/4bb677dda909479a817e879ca25239728ab1b1b9
+    digest: sha256:ead9f24194f3f522fdf4c1e89c453280637a39d555c648c57ac16f5dda37827f
+    buriedAt: 2026-03-19T03:02:03.305Z
+    sourceUrl: https://github.com/Ambush-Capital/llm-builder-buds/tree/main/skills/exec-plan
+    sourcePath: skills/exec-plan
+    sourceRef: main
+    sourceCommit: 4bb677dda909479a817e879ca25239728ab1b1b9
   - name: gh-address-comments
     version: ce2535c009ef92f4065be9626ae695c9ecd77e61
     registryPath: skills/gh-address-comments/versions/ce2535c009ef92f4065be9626ae695c9ecd77e61
@@ -15,6 +24,15 @@ skills:
     buriedAt: 2026-03-08T17:34:37.571Z
     sourceUrl: https://github.com/openai/skills/tree/main/skills/.curated/gh-fix-ci
     sourcePath: skills/.curated/gh-fix-ci
+    sourceRef: main
+    sourceCommit: ce2535c009ef92f4065be9626ae695c9ecd77e61
+  - name: linear
+    version: ce2535c009ef92f4065be9626ae695c9ecd77e61
+    registryPath: skills/linear/versions/ce2535c009ef92f4065be9626ae695c9ecd77e61
+    digest: sha256:351543c5b51726622fe86d367f5e109d7c2e892faa432bdc9c2a8de4e0224576
+    buriedAt: 2026-03-08T17:34:30.326Z
+    sourceUrl: https://github.com/openai/skills/tree/main/skills/.curated/linear
+    sourcePath: skills/.curated/linear
     sourceRef: main
     sourceCommit: ce2535c009ef92f4065be9626ae695c9ecd77e61
   - name: pr-writer
