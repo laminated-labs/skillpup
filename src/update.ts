@@ -21,7 +21,12 @@ import {
   type UpdateSelectionChoice,
 } from "./update-prompts.js";
 import type { ArtifactKind, FetchResult } from "./types.js";
-import { formatArtifactRef, formatArtifactSpecifier, parseArtifactSpecifier } from "./utils.js";
+import {
+  formatArtifactRef,
+  formatArtifactSpecifier,
+  LOCKFILE_BASENAME,
+  parseArtifactSpecifier,
+} from "./utils.js";
 
 type ProjectUpdateStatus =
   | "up-to-date"
@@ -172,7 +177,7 @@ export async function updateProjectArtifacts(
       requestedArtifacts.map((entry) => artifactKey(entry.kind!, entry.name))
     );
     const lockfile = await loadLockfile(
-      path.join(path.dirname(loadedConfig.path), "skillpup.lock.yaml")
+      path.join(path.dirname(loadedConfig.path), LOCKFILE_BASENAME)
     );
     const lockByKey = new Map([
       ...lockfile.skills.map((entry) => [artifactKey("skill", entry.name), entry] as const),
