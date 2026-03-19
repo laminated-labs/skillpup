@@ -15,6 +15,8 @@ Inspired by our great friends at [Ambush Capital](https://www.ambush.capital) an
 - initialize a registry repository with `skillpup bury init`
 - publish versioned skill bundles and subagent bundles into that registry with `skillpup bury`
 - fetch those artifacts into a consumer repository with `skillpup fetch`
+- check for project updates from the configured registry with `skillpup update`
+- check for registry updates from upstream sources with `skillpup bury update`
 - record the chosen versions in `skillpup.config.yaml`
 - pin fetched contents and source metadata in `skillpup.lock.yaml`
 - install skill bundles into `.agents/skills/<skill-name>`
@@ -156,6 +158,18 @@ After the initial fetch, future syncs can rely on the saved config:
 
 ```bash
 skillpup fetch
+```
+
+To check whether the project is pinned behind newer registry versions without changing files:
+
+```bash
+skillpup update
+```
+
+To apply every available project update in one run:
+
+```bash
+skillpup update --apply --all
 ```
 
 If you want to bootstrap a consumer config from everything currently buried in the registry, generate it directly from the registry:
@@ -320,6 +334,29 @@ Behavior:
 - verifies installed contents against the registry digest before completing
 - bare fetch names prefer the configured kind when the same name exists as both a skill and a subagent; otherwise use `skill:<name>` or `subagent:<name>` to disambiguate
 
+### `skillpup update [artifacts...]`
+
+Checks the configured project artifacts against the registry and optionally applies selected updates.
+
+Arguments:
+
+- `artifacts`: optional list of configured `name`, `skill:name`, or `subagent:name` selectors
+
+Options:
+
+- `--registry <path-or-git-url>`: override the configured registry for the current run
+- `--apply`: apply selected available updates
+- `--all`: when used with `--apply`, apply every available update without prompting
+- `--commit`: commit config and lockfile changes when applying
+
+Behavior:
+
+- defaults to check-only output and does not mutate files
+- compares configured project artifacts to the registry and reports newer versions or same-version digest refreshes
+- when applying, reuses the existing `fetch` workflow to rewrite config pins, lockfile entries, and installed contents for the selected artifacts
+- refuses to prompt in non-interactive mode unless you pass explicit artifact selectors or `--all`
+- rejects `name@version` selectors; use `fetch` when you want to install an exact version directly
+
 ### `skillpup bury init [directory]`
 
 Initializes a directory as a registry repository. If no directory is provided, the current working directory is used.
@@ -364,6 +401,29 @@ Behavior:
 - rewrites `metadata.yaml` and the matching `index.yaml` entry when the digest changes
 - leaves metadata untouched when the bundle digest is unchanged
 
+### `skillpup bury update [artifacts...]`
+
+Checks the latest buried version of each registry artifact against its recorded upstream source metadata and optionally publishes selected updates.
+
+Arguments:
+
+- `artifacts`: optional list of `name`, `skill:name`, or `subagent:name` selectors
+
+Options:
+
+- `--registry <local-path>`: local path to the registry repository; inferred from the current directory when omitted
+- `--apply`: publish selected available updates into the registry
+- `--all`: when used with `--apply`, publish every available update without prompting
+- `--commit`: commit the published registry changes
+
+Behavior:
+
+- defaults to check-only output and does not mutate the registry
+- scans only the latest buried version for each selected artifact
+- supports newer semver tags for tag-tracked artifacts and newer commits on the recorded branch or named ref for branch-tracked artifacts
+- republishes selected updates as new immutable registry versions; it does not rewrite old versions in place
+- rejects `name@version` selectors; use `bury` when you want to publish an exact version directly
+
 ## Integrity and Git Behavior
 
 `skillpup` is designed to keep fetched skills reproducible and auditable.
@@ -375,6 +435,7 @@ Behavior:
 - `bury` strips top-level `.git` metadata from published repo-root skills so consumers do not receive nested git repositories
 - `bury refresh` intentionally mutates an existing buried version in place; consumers locked to the older digest will keep failing until their lockfile is updated
 - `fetch <artifact-name> --force` accepts a refreshed digest for that explicitly requested artifact and rewrites its lockfile entry
+- `update` surfaces same-version digest refreshes as selectable project updates, and applying them reuses the same explicit-fetch `--force` path
 
 Commit behavior:
 
@@ -423,7 +484,7 @@ The bundled files in the registry no longer match the digest recorded in `metada
 
 ### Codex `[agents]` settings
 
-`skillpup` v1 manages project-scoped subagent files in `.codex/agents`, but it does not manage `.codex/config.toml` or global `[agents]` settings such as `max_threads` or `max_depth`.
+`skillpup` manages project-scoped subagent files in `.codex/agents`, but it does yet not manage `.codex/config.toml` or global `[agents]` settings such as `max_threads` or `max_depth`.
 
 ### Skills directory detection
 
