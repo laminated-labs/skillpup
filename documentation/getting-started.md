@@ -100,7 +100,7 @@ If you want to bootstrap a consumer config from everything currently buried in t
 skillpup fetch --generate --all --registry ../skill-registry
 ```
 
-If the config lives in a parent directory, `skillpup` will discover it when run from nested subdirectories.
+If the config lives in a parent directory, `skillpup` will discover it when run from nested subdirectories. Relative `registry.url` paths are resolved from the config file directory, not from the nested shell location.
 
 ## What Gets Installed
 

@@ -58,7 +58,7 @@ skills:
     registryPath: skills/reviewer/versions/v1.10.0
     digest: sha256:...
     buriedAt: 2026-03-07T00:00:00.000Z
-    sourceUrl: ../reviewer-skill
+    sourceUrl: /absolute/path/to/reviewer-skill
     sourcePath: .
     sourceRef: v1.10.0
     sourceCommit: 0123456789abcdef
@@ -68,7 +68,7 @@ subagents:
     registryPath: subagents/courier-reviewer/versions/v1.0.0
     digest: sha256:...
     buriedAt: 2026-03-07T00:00:00.000Z
-    sourceUrl: ../team-subagents
+    sourceUrl: /absolute/path/to/team-subagents
     sourcePath: .codex/agents/courier-reviewer.toml
     sourceRef: v1.0.0
     sourceCommit: fedcba9876543210

@@ -30,7 +30,7 @@ If the same name exists as both a skill and a subagent, use `skill:<name>` or `s
 
 ## Running From A Nested Directory
 
-`fetch` searches parent directories for `skillpup` config files, so you can run it from subdirectories inside a consumer repository as long as the config exists higher up the tree.
+`fetch` searches parent directories for `skillpup` config files, so you can run it from subdirectories inside a consumer repository as long as the config exists higher up the tree. Relative `registry.url` values from that config are resolved from the config file directory.
 
 ## `Installed digest mismatch`
 

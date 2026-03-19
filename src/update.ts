@@ -1,5 +1,8 @@
 import path from "node:path";
-import { loadProjectConfig } from "./config.js";
+import {
+  loadProjectConfig,
+  resolveConfiguredRegistryUrl,
+} from "./config.js";
 import { fetchSkills } from "./fetch.js";
 import { openRegistryForRead } from "./git-bundle-backend.js";
 import { loadLockfile } from "./lockfile.js";
@@ -151,7 +154,9 @@ export async function updateProjectArtifacts(
     throw new Error("No skillpup config found. Create skillpup.config.yaml before updating.");
   }
 
-  const effectiveRegistry = options.registry ?? loadedConfig.config.registry.url;
+  const effectiveRegistry = options.registry
+    ? options.registry
+    : resolveConfiguredRegistryUrl(loadedConfig.config.registry.url, loadedConfig.path);
   const registryHandle = await openRegistryForRead(effectiveRegistry);
   try {
     const readVersionMetadata = createMetadataReader(registryHandle.backend);

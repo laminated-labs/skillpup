@@ -7,7 +7,12 @@ import type {
   FetchResult,
   SkillpupConfig,
 } from "./types.js";
-import { getDefaultConfigPath, loadProjectConfig, writeProjectConfig } from "./config.js";
+import {
+  getDefaultConfigPath,
+  loadProjectConfig,
+  resolveConfiguredRegistryUrl,
+  writeProjectConfig,
+} from "./config.js";
 import { defaultFetchPrompts, type FetchPrompts, type GenerateMergeStrategy } from "./fetch-prompts.js";
 import { loadLockfile, writeLockfile } from "./lockfile.js";
 import { computeDirectoryDigest, copyDirectoryStrict, ensureDir, removePath } from "./fs-utils.js";
@@ -163,7 +168,9 @@ export async function fetchSkills(options: FetchOptions = {}): Promise<FetchResu
     subagents: [],
   };
 
-  const effectiveRegistry = options.registry ?? config.registry.url;
+  const effectiveRegistry = options.registry
+    ? options.registry
+    : resolveConfiguredRegistryUrl(config.registry.url, configPath);
   const lockfilePath = path.join(configDir, LOCKFILE_BASENAME);
   const lockfile = await loadLockfile(lockfilePath);
   const previousLockByKey = new Map([

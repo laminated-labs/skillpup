@@ -2,6 +2,10 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { cosmiconfig } from "cosmiconfig";
 import { z } from "zod";
+import {
+  isAbsoluteLocalSourcePath,
+  isScpLikeGitUrl,
+} from "./source-spec.js";
 import type { SkillpupConfig } from "./types.js";
 import { resolveSkillsDir } from "./skills-dir.js";
 import { CONFIG_FILE_BASENAME, DEFAULT_SUBAGENTS_DIR } from "./utils.js";
@@ -125,4 +129,21 @@ export async function writeProjectConfig(
 
 export function getDefaultConfigPath(baseDir: string) {
   return path.join(baseDir, CONFIG_FILE_BASENAME);
+}
+
+export function resolveConfiguredRegistryUrl(registryUrl: string, configPath: string) {
+  if (isScpLikeGitUrl(registryUrl) || isAbsoluteLocalSourcePath(registryUrl)) {
+    return registryUrl;
+  }
+
+  try {
+    const parsedUrl = new URL(registryUrl);
+    if (parsedUrl.protocol) {
+      return registryUrl;
+    }
+  } catch {
+    // Fall through to local path resolution.
+  }
+
+  return path.resolve(path.dirname(configPath), registryUrl);
 }

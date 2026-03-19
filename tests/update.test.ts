@@ -111,6 +111,27 @@ describe("skillpup update flows", () => {
   );
 
   it(
+    "resolves relative config registry paths from the config directory when updating from nested subdirectories",
+    async () => {
+      const { consumerDir } = await setupConsumerUpdateScenario(rootDir, "project-relative-config");
+      const configPath = path.join(consumerDir, "skillpup.config.yaml");
+      const config = await readYamlFile<SkillpupConfig>(configPath);
+      config.registry.url = "../project-relative-config-registry";
+      await fs.writeFile(configPath, stringify(config), "utf8");
+
+      const nestedDir = path.join(consumerDir, "packages", "app");
+      await fs.mkdir(nestedDir, { recursive: true });
+
+      const result = await runCli(nestedDir, ["update"]);
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain("Project updates available:");
+      expect(result.stdout).toContain("reviewer@v1.1.0 from v1.0.0");
+    },
+    TEST_TIMEOUT
+  );
+
+  it(
     "applies selected project updates through fetch",
     async () => {
       const { registryDir, consumerDir } = await setupConsumerUpdateScenario(
