@@ -7,6 +7,11 @@ const gitEnv = {
   GIT_TERMINAL_PROMPT: "0",
 };
 
+export type RemoteGitRef = {
+  commit: string;
+  ref: string;
+};
+
 export async function runGit(
   args: string[],
   cwd: string,
@@ -58,6 +63,26 @@ export async function listTags(cwd: string) {
     .split("\n")
     .map((entry) => entry.trim())
     .filter(Boolean);
+}
+
+export async function listRemoteRefs(repoUrl: string) {
+  const result = await execa("git", ["ls-remote", "--refs", repoUrl], {
+    cwd: process.cwd(),
+    env: gitEnv,
+    stdin: "ignore",
+  });
+
+  return result.stdout
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => {
+      const [commit, ref] = line.split(/\s+/, 2);
+      if (!commit || !ref) {
+        throw new Error(`Unexpected git ls-remote output: ${line}`);
+      }
+      return { commit, ref } satisfies RemoteGitRef;
+    });
 }
 
 export async function getHeadCommit(cwd: string) {

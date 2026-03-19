@@ -25,7 +25,6 @@ import {
   readSubagentManifest,
 } from "./subagents.js";
 import {
-  REGISTRY_FILE_BASENAME,
   canonicalRegistryPath,
   compareSemverDescending,
   formatArtifactRef,
@@ -38,6 +37,7 @@ import {
   parseGitHubTreeUrl,
   splitGitHubTreeRefAndPath,
 } from "./source-spec.js";
+import { findContainingRegistryRoot } from "./registry-root.js";
 
 function deriveDefaultSkillName(sourceGitUrl: string, skillPath?: string) {
   if (skillPath) {
@@ -50,27 +50,6 @@ function deriveDefaultSkillName(sourceGitUrl: string, skillPath?: string) {
     .replace(/\/+$/, "")
     .replace(/\.git$/, "");
   return path.posix.basename(normalizedSource);
-}
-
-async function findContainingRegistryRoot(targetPath: string) {
-  let currentPath = path.resolve(targetPath);
-  const stats = await fs.stat(currentPath).catch(() => null);
-  if (stats?.isFile()) {
-    currentPath = path.dirname(currentPath);
-  }
-
-  while (true) {
-    const markerPath = path.join(currentPath, REGISTRY_FILE_BASENAME);
-    if (await pathExists(markerPath)) {
-      return currentPath;
-    }
-
-    const parentPath = path.dirname(currentPath);
-    if (parentPath === currentPath) {
-      return null;
-    }
-    currentPath = parentPath;
-  }
 }
 
 function inferBuriedVersionFromTarget(targetPath: string, registryRoot: string) {
