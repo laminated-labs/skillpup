@@ -13,7 +13,7 @@ unified_exec = true
 
 [sandbox_workspace_write]
 network_access = true
-writable_roots = ["/home/vscode", "__WORKSPACE_ROOT__", "/tmp"]
+writable_roots = ["/home/vscode", "/workspaces/skillpup", "/tmp"]
 
-[projects."__WORKSPACE_ROOT__"]
+[projects."/workspaces/skillpup"]
 trust_level = "trusted"

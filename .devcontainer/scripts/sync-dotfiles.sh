@@ -8,9 +8,9 @@ DOTFILES_PACKAGE="vscode"
 PACKAGE_ROOT="${DOTFILES_ROOT}/${DOTFILES_PACKAGE}"
 BACKUP_ROOT="${HOME}/.codex/backup"
 TIMESTAMP="$(date -u +"%Y%m%dT%H%M%SZ")"
-CONFIG_TEMPLATE_PATH="${DOTFILES_ROOT}/codex-config.toml.template"
 
 STOW_MANAGED_PATHS=(
+  ".codex/config.toml"
   ".codex/rules"
 )
 
@@ -78,53 +78,9 @@ verify_symlink() {
   fi
 }
 
-escape_sed_replacement() {
-  printf '%s' "$1" | sed -e 's/[&|]/\\&/g'
-}
-
-render_codex_config() {
-  local target_path="${HOME}/.codex/config.toml"
-  local tmp_path
-  local escaped_repo_root
-
-  tmp_path="$(mktemp)"
-  escaped_repo_root="$(escape_sed_replacement "${REPO_ROOT}")"
-  sed "s|__WORKSPACE_ROOT__|${escaped_repo_root}|g" "${CONFIG_TEMPLATE_PATH}" > "${tmp_path}"
-
-  if [[ -L "${target_path}" ]]; then
-    backup_existing_path ".codex/config.toml"
-  elif [[ -e "${target_path}" ]] && cmp -s "${target_path}" "${tmp_path}"; then
-    rm -f "${tmp_path}"
-    return 0
-  elif [[ -e "${target_path}" ]]; then
-    backup_existing_path ".codex/config.toml"
-  fi
-
-  mkdir -p "$(dirname "${target_path}")"
-  mv "${tmp_path}" "${target_path}"
-}
-
-verify_rendered_config() {
-  local target_path="${HOME}/.codex/config.toml"
-  local tmp_path
-  local escaped_repo_root
-
-  tmp_path="$(mktemp)"
-  escaped_repo_root="$(escape_sed_replacement "${REPO_ROOT}")"
-  sed "s|__WORKSPACE_ROOT__|${escaped_repo_root}|g" "${CONFIG_TEMPLATE_PATH}" > "${tmp_path}"
-
-  if [[ ! -f "${target_path}" ]] || ! cmp -s "${target_path}" "${tmp_path}"; then
-    rm -f "${tmp_path}"
-    fail "Expected ${target_path} to match the rendered config template"
-  fi
-
-  rm -f "${tmp_path}"
-}
-
 main() {
   command -v stow >/dev/null 2>&1 || fail "GNU Stow is required but not installed."
   [[ -d "${PACKAGE_ROOT}" ]] || fail "Missing dotfiles package directory: ${PACKAGE_ROOT}"
-  [[ -f "${CONFIG_TEMPLATE_PATH}" ]] || fail "Missing Codex config template: ${CONFIG_TEMPLATE_PATH}"
 
   for relative_path in "${STOW_MANAGED_PATHS[@]}"; do
     [[ -e "${PACKAGE_ROOT}/${relative_path}" || -L "${PACKAGE_ROOT}/${relative_path}" ]] || fail "Managed source is missing: ${PACKAGE_ROOT}/${relative_path}"
@@ -136,13 +92,11 @@ main() {
     backup_stow_conflict "${relative_path}"
   done
 
-  render_codex_config
   stow --restow --target="${HOME}" --dir "${DOTFILES_ROOT}" "${DOTFILES_PACKAGE}"
 
   for relative_path in "${STOW_MANAGED_PATHS[@]}"; do
     verify_symlink "${relative_path}"
   done
-  verify_rendered_config
 
   log "Dotfiles are synced."
 }
