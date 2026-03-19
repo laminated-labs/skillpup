@@ -50,6 +50,34 @@ pnpm build
 node dist/cli.js --help
 ```
 
+## Contributor Bootstrap
+
+This repo ships a small contributor bootstrap inspired by the larger platform setup:
+
+- `.devcontainer/` provides a single-container Node 24 environment with `gh`, `jq`, `just`, `ripgrep`, `bubblewrap`, `docpup`, and `codex`
+- `.devcontainer/dotfiles/` stores the devcontainer-managed Codex config and rules, synced into `~/.codex/` with GNU Stow
+- `skillpup.config.yaml` dogfoods the laminated skills registry for repo support skills
+- `docpup.config.yaml` builds a compact local docs cache for the CLI surface this repo touches most often
+- `AGENTS.md` documents the expected contributor workflow for agents and humans
+
+Useful commands from the repo root:
+
+```bash
+just skills
+just docs
+just context
+```
+
+Behavior:
+
+- `just skills` fetches the pinned support skills into `.agents/skills/`
+- `just docs` refreshes the local docs cache into `documentation/external/`
+- `just context` runs both
+- the devcontainer enables permissive container security options so `bubblewrap` can run inside it
+
+Fetched artifacts, generated docs, and generated indices are intentionally gitignored.
+`docpup-lock.json` is tracked so repo-backed doc sources keep a stable freshness lock.
+
 ## Quick Start
 
 The normal workflow involves three repositories or directories:
