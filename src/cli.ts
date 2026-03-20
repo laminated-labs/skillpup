@@ -12,9 +12,21 @@ import {
   updateProjectArtifacts,
 } from "./update.js";
 import { formatArtifactRef } from "./utils.js";
+import { formatSniffReport, formatSniffSummary, sniffSkills } from "./sniff.js";
 
 const require = createRequire(import.meta.url);
 const packageJson = require("../package.json") as { version: string };
+
+function isSourceModeTarget(target: string) {
+  return (
+    target.includes("/") ||
+    target.includes("\\") ||
+    target === "." ||
+    target === ".." ||
+    target.startsWith("git@") ||
+    target.includes("://")
+  );
+}
 
 export async function runCli(argv: string[] = process.argv) {
   const program = new Command();
@@ -59,6 +71,45 @@ export async function runCli(argv: string[] = process.argv) {
       }
 
       console.log("No project updates applied");
+    });
+
+  program
+    .command("sniff")
+    .description("Look up Tego security assessments for skills")
+    .argument(
+      "[targets...]",
+      "Configured skill names, a source repository/path, or registry artifact selectors"
+    )
+    .option("--registry <path-or-git-url>", "Registry path or git URL for registry mode")
+    .option("--path <artifact-path>", "Path to the skill root within the source repository")
+    .option("--ref <git-ref>", "Git ref to inspect in source mode")
+    .action(async (targets: string[], options) => {
+      if (options.registry && (options.path || options.ref)) {
+        throw new Error("The --path and --ref options are only valid in source mode.");
+      }
+
+      const sourceMode =
+        !options.registry &&
+        (Boolean(options.path || options.ref) ||
+          (targets.length === 1 && isSourceModeTarget(targets[0]!)));
+      if (sourceMode && targets.length !== 1) {
+        throw new Error("Source mode requires exactly one source repository or path.");
+      }
+
+      const result = await runWithSpinner("Sniffing around...", () =>
+        sniffSkills({
+          artifactSpecs: options.registry || !sourceMode ? targets : undefined,
+          registry: options.registry,
+          sourceGitUrl: sourceMode ? targets[0] : undefined,
+          path: options.path,
+          ref: options.ref,
+        })
+      );
+
+      for (const line of formatSniffReport(result.entries)) {
+        console.log(line);
+      }
+      console.log(formatSniffSummary(result.entries));
     });
 
   program

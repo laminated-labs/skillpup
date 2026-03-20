@@ -1,57 +1,24 @@
 import fs from "node:fs/promises";
-import os from "node:os";
 import path from "node:path";
 import type { ArtifactKind, BuryAddResult, RefreshResult } from "./types.js";
 import { openRegistryForWrite, GitBundleRegistryBackend } from "./git-bundle-backend.js";
 import {
-  checkoutRef,
-  cloneRepo,
   commitChanges,
-  ensureEmptyDir,
   ensureNoUnrelatedStagedChanges,
-  gitRefExists,
-  getCurrentBranch,
   getGitRoot,
-  getHeadCommit,
   initGitRepo,
-  listTags,
   stagePaths,
   toGitRelativePath,
 } from "./git.js";
 import { pathExists } from "./fs-utils.js";
 import {
-  buildSubagentBundleFileName,
-  isSubagentFilePath,
-  readSubagentManifest,
-} from "./subagents.js";
-import {
   canonicalRegistryPath,
-  compareSemverDescending,
   formatArtifactRef,
-  parseSemverLike,
   resolveInside,
   toPosix,
-  validateArtifactName,
 } from "./utils.js";
-import {
-  normalizeStoredSourceUrl,
-  parseGitHubTreeUrl,
-  splitGitHubTreeRefAndPath,
-} from "./source-spec.js";
+import { resolveSourceArtifact } from "./source-artifact.js";
 import { findContainingRegistryRoot } from "./registry-root.js";
-
-function deriveDefaultSkillName(sourceGitUrl: string, skillPath?: string) {
-  if (skillPath) {
-    const normalizedPath = skillPath.replace(/\\/g, "/").replace(/\/+$/, "");
-    return path.posix.basename(normalizedPath);
-  }
-
-  const normalizedSource = sourceGitUrl
-    .replace(/\\/g, "/")
-    .replace(/\/+$/, "")
-    .replace(/\.git$/, "");
-  return path.posix.basename(normalizedSource);
-}
 
 function inferBuriedVersionFromTarget(targetPath: string, registryRoot: string) {
   let currentPath = path.resolve(targetPath);
@@ -87,60 +54,6 @@ function inferBuriedVersionFromTarget(targetPath: string, registryRoot: string) 
   );
 }
 
-async function selectBuriedArtifact(
-  cloneDir: string,
-  selectedPath: string,
-  tempRoot: string,
-  explicitName?: string
-) {
-  const sourceLstat = await fs.lstat(selectedPath);
-  if (sourceLstat.isSymbolicLink()) {
-    throw new Error(`Symlinked artifact paths are not supported: ${selectedPath}`);
-  }
-
-  const sourceStats = await fs.stat(selectedPath);
-  if (sourceStats.isDirectory()) {
-    const skillMarkerPath = path.join(selectedPath, "SKILL.md");
-    if (!(await pathExists(skillMarkerPath))) {
-      throw new Error(
-        "Selected path must be a skill directory containing SKILL.md or a subagent TOML file. Pass --path to a subagent TOML file."
-      );
-    }
-
-    const skillName = explicitName ?? path.posix.basename(toPosix(path.relative(cloneDir, selectedPath) || path.basename(selectedPath)));
-    return {
-      kind: "skill" as const,
-      name: skillName,
-      sourceDir: selectedPath,
-    };
-  }
-
-  if (!sourceStats.isFile() || !isSubagentFilePath(selectedPath)) {
-    throw new Error(
-      "Selected path must be a skill directory containing SKILL.md or a subagent TOML file. Pass --path to a subagent TOML file."
-    );
-  }
-
-  const manifest = await readSubagentManifest(selectedPath);
-  if (explicitName && explicitName !== manifest.name) {
-    throw new Error(
-      `Subagent name override "${explicitName}" must match the manifest name "${manifest.name}".`
-    );
-  }
-
-  const bundleSourceDir = path.join(tempRoot, "subagent-bundle");
-  await fs.mkdir(bundleSourceDir, { recursive: true });
-  await fs.copyFile(
-    selectedPath,
-    path.join(bundleSourceDir, buildSubagentBundleFileName(manifest.name))
-  );
-
-  return {
-    kind: "subagent" as const,
-    name: manifest.name,
-    sourceDir: bundleSourceDir,
-  };
-}
 
 export async function buryInit(options?: { directory?: string; cwd?: string }) {
   const cwd = options?.cwd ?? process.cwd();
@@ -170,86 +83,26 @@ export async function burySkill(options: {
   const cwd = options.cwd ?? process.cwd();
   const registryRoot = path.resolve(cwd, options.registry ?? ".");
   const backend = await openRegistryForWrite(registryRoot);
-  const storedSourceUrl = normalizeStoredSourceUrl(options.sourceGitUrl, cwd);
-  const parsedGitHubTreeUrl = parseGitHubTreeUrl(options.sourceGitUrl);
-  const cloneSourceUrl = parsedGitHubTreeUrl?.repoUrl ?? storedSourceUrl;
-
-  const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "skillpup-source-"));
-  const cloneDir = path.join(tempRoot, "source");
+  const resolvedSource = await resolveSourceArtifact({
+    sourceGitUrl: options.sourceGitUrl,
+    path: options.path,
+    ref: options.ref,
+    name: options.name,
+    cwd,
+  });
 
   try {
-    await ensureEmptyDir(tempRoot);
-    await cloneRepo(cloneSourceUrl, cloneDir);
-
-    let inferredRef = options.ref?.trim();
-    let inferredPath = options.path;
-    if (parsedGitHubTreeUrl && (!inferredRef || !inferredPath)) {
-      const resolved = await splitGitHubTreeRefAndPath(
-        parsedGitHubTreeUrl.refAndPathSegments,
-        (candidate) => gitRefExists(cloneDir, candidate)
-      );
-      if (!resolved) {
-        throw new Error(
-          `Unable to resolve GitHub tree URL ref/path: ${options.sourceGitUrl}`
-        );
-      }
-      inferredRef ??= resolved.ref;
-      inferredPath ??= resolved.path;
-    }
-
-    let selectedRef = inferredRef;
-    let selectedTag: string | undefined;
-
-    if (selectedRef) {
-      await checkoutRef(cloneDir, selectedRef);
-    } else {
-      const tags = await listTags(cloneDir);
-      const semverTags = tags
-        .filter((tag) => parseSemverLike(tag))
-        .sort(compareSemverDescending);
-
-      selectedTag = semverTags[0];
-      if (selectedTag) {
-        await checkoutRef(cloneDir, selectedTag);
-      } else {
-        selectedRef = await getCurrentBranch(cloneDir);
-      }
-    }
-
-    const sourceRef = inferredRef ?? selectedTag ?? selectedRef ?? (await getCurrentBranch(cloneDir));
-    const sourceCommit = await getHeadCommit(cloneDir);
-    const selectedSourcePath = inferredPath
-      ? resolveInside(cloneDir, inferredPath)
-      : cloneDir;
-
-    if (!(await pathExists(selectedSourcePath))) {
-      throw new Error(`Artifact path does not exist: ${inferredPath}`);
-    }
-
-    const selectedArtifact = await selectBuriedArtifact(
-      cloneDir,
-      selectedSourcePath,
-      tempRoot,
-      options.name
-    );
-
-    const skillName =
-      selectedArtifact.kind === "skill"
-        ? options.name ?? deriveDefaultSkillName(options.sourceGitUrl, inferredPath)
-        : selectedArtifact.name;
-    validateArtifactName(skillName);
-    const version = options.version ?? selectedTag ?? sourceCommit;
-    const sourcePath = inferredPath ?? ".";
+    const version = options.version ?? resolvedSource.selectedTag ?? resolvedSource.sourceCommit;
 
     const result = await backend.publishVersion({
-      kind: selectedArtifact.kind,
-      name: skillName,
+      kind: resolvedSource.kind,
+      name: resolvedSource.name,
       version,
-      sourceDir: selectedArtifact.sourceDir,
-      sourceUrl: storedSourceUrl,
-      sourcePath,
-      sourceRef,
-      sourceCommit,
+      sourceDir: resolvedSource.sourceDir,
+      sourceUrl: resolvedSource.storedSourceUrl,
+      sourcePath: resolvedSource.sourcePath,
+      sourceRef: resolvedSource.sourceRef,
+      sourceCommit: resolvedSource.sourceCommit,
     });
 
     if (options.commit) {
@@ -263,16 +116,16 @@ export async function burySkill(options: {
       await commitChanges(
         gitRoot,
         `chore(skillpup-registry): bury ${formatArtifactRef(
-          skillName,
+          resolvedSource.name,
           version,
-          selectedArtifact.kind
+          resolvedSource.kind
         )}`
       );
     }
 
     return result;
   } finally {
-    await fs.rm(tempRoot, { recursive: true, force: true });
+    await resolvedSource.cleanup();
   }
 }
 
