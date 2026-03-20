@@ -54,7 +54,7 @@ export function parseGitHubRepoUrl(source: string): GitHubRepoRef | null {
   }
 
   if (isScpLikeGitUrl(source)) {
-    const match = source.match(/^[^@]+@github\.com:([^/]+)\/(.+?)(?:\.git)?$/);
+    const match = source.match(/^[^@]+@github\.com:([^/]+)\/([^/]+?)(?:\.git)?$/);
     if (!match) {
       return null;
     }
