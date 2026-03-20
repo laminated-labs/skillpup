@@ -65,3 +65,34 @@ prefix_rule(
     decision = "allow",
     justification = "Local Node-based inspection and repo tooling.",
 )
+
+prefix_rule(
+    pattern = ["gh", "auth", "status"],
+    decision = "allow",
+    justification = "Read GitHub CLI authentication status for repo workflows.",
+)
+
+prefix_rule(
+    pattern = ["gh", "repo", "view"],
+    decision = "allow",
+    justification = "Inspect repository metadata from GitHub.",
+)
+
+prefix_rule(
+    pattern = ["gh", "pr", ["list", "view"]],
+    decision = "allow",
+    justification = "Read pull request metadata and review state from GitHub.",
+)
+
+prefix_rule(
+    pattern = ["gh", "api", "graphql"],
+    decision = "prompt",
+    justification = "GraphQL access is useful, but each invocation should still be reviewed because the prefix also covers mutations.",
+    match = [
+        "gh api graphql -f query='query { viewer { login } }'",
+        "gh api graphql -f query='mutation { closeIssue(input:{issueId:\"x\"}) { issue { id } } }'",
+    ],
+    not_match = [
+        "gh api repos/openai/codex/pulls",
+    ],
+)
