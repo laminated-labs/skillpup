@@ -467,6 +467,66 @@ describe("skillpup sniff", () => {
   );
 
   it(
+    "matches local source skills when the current branch name contains slashes",
+    async () => {
+      const source = await createSkillRepo({
+        skillName: "reviewer",
+        skillPath: "skills/reviewer",
+        versions: ["v1.0.0"],
+      });
+      await runGit(["checkout", "-b", "feature/dog-mode"], source.repoDir);
+      await runGit(
+        ["remote", "add", "origin", "git@github.com:example/team-skills.git"],
+        source.repoDir
+      );
+      const sourceCommit = await runGitCapture(["rev-parse", "HEAD"], source.repoDir);
+
+      const server = await startTegoServer({
+        expectedApiKey: "test-key",
+        skills: [
+          {
+            id: "skill-slash-ref",
+            skill_name: "reviewer",
+            overall_risk: "medium",
+            analysis_timestamp: "2026-03-17T21:03:14Z",
+            repo_full_name: "example/team-skills",
+            github_html_url:
+              "https://github.com/example/team-skills/blob/feature/dog-mode/skills/reviewer/SKILL.md",
+          },
+        ],
+        assessments: {
+          "skill-slash-ref": {
+            id: "skill-slash-ref",
+            skill_name: "reviewer",
+            sha: sourceCommit,
+            assessment: {},
+          },
+        },
+      });
+
+      try {
+        const result = await runCli(
+          rootDir,
+          ["sniff", source.repoDir, "--path", "skills/reviewer"],
+          {
+            env: {
+              TEGO_API_KEY: "test-key",
+              SKILLPUP_TEGO_BASE_URL: server.baseUrl,
+            },
+          }
+        );
+
+        expect(result.exitCode).toBe(0);
+        expect(result.stdout).toContain("MATCHED: skill:reviewer [medium]");
+        expect(result.stdout).toContain("freshness: exact-commit");
+      } finally {
+        await server.close();
+      }
+    },
+    TEST_TIMEOUT
+  );
+
+  it(
     "does not match nested skill paths when sniffing a repo-root skill",
     async () => {
       const source = await createSkillRepo({

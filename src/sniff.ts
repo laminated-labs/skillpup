@@ -76,10 +76,39 @@ function buildSkillFilePath(sourcePath: string) {
   return normalizedPath === "." ? "SKILL.md" : `${normalizedPath}/SKILL.md`;
 }
 
+function extractGitHubBlobSkillPath(
+  pathname: string,
+  expectedRepoFullName: string,
+  expectedSourceRef?: string
+) {
+  const pathPrefix = `/${expectedRepoFullName}/blob/`.toLowerCase();
+  const normalizedPathname = pathname.toLowerCase();
+  if (!normalizedPathname.startsWith(pathPrefix)) {
+    return null;
+  }
+
+  const afterBlobPrefix = pathname.slice(pathPrefix.length);
+  const normalizedAfterBlobPrefix = normalizedPathname.slice(pathPrefix.length);
+  if (expectedSourceRef) {
+    const expectedRefPrefix = `${expectedSourceRef}/`;
+    if (normalizedAfterBlobPrefix.startsWith(expectedRefPrefix.toLowerCase())) {
+      return afterBlobPrefix.slice(expectedRefPrefix.length);
+    }
+  }
+
+  const refSeparatorIndex = afterBlobPrefix.indexOf("/");
+  if (refSeparatorIndex < 0) {
+    return null;
+  }
+
+  return afterBlobPrefix.slice(refSeparatorIndex + 1);
+}
+
 function matchesGitHubSkillPath(
   githubHtmlUrl: string | undefined,
   expectedRepoFullName: string,
-  expectedSkillFilePath: string
+  expectedSkillFilePath: string,
+  expectedSourceRef?: string
 ) {
   if (!githubHtmlUrl) {
     return false;
@@ -87,22 +116,18 @@ function matchesGitHubSkillPath(
 
   try {
     const parsedUrl = new URL(githubHtmlUrl);
-    const pathPrefix = `/${expectedRepoFullName}/blob/`.toLowerCase();
-    const normalizedPathname = parsedUrl.pathname.toLowerCase();
-    if (
-      parsedUrl.hostname.toLowerCase() !== "github.com" ||
-      !normalizedPathname.startsWith(pathPrefix)
-    ) {
+    if (parsedUrl.hostname.toLowerCase() !== "github.com") {
       return false;
     }
 
-    const afterBlobPrefix = parsedUrl.pathname.slice(pathPrefix.length);
-    const refSeparatorIndex = afterBlobPrefix.indexOf("/");
-    if (refSeparatorIndex < 0) {
+    const actualSkillFilePath = extractGitHubBlobSkillPath(
+      parsedUrl.pathname,
+      expectedRepoFullName,
+      expectedSourceRef
+    );
+    if (!actualSkillFilePath) {
       return false;
     }
-
-    const actualSkillFilePath = afterBlobPrefix.slice(refSeparatorIndex + 1);
     return actualSkillFilePath === expectedSkillFilePath;
   } catch {
     return false;
@@ -124,6 +149,7 @@ function sortMatchedSkills(skills: TegoSkillSummary[], skillName: string) {
 async function buildMatchedAssessment(args: {
   targetLabel: string;
   skillName: string;
+  sourceRef: string;
   sourceCommit: string;
   lookup: GitHubSkillLookup;
   tego: ReturnType<typeof createTegoClient>;
@@ -139,7 +165,8 @@ async function buildMatchedAssessment(args: {
       matchesGitHubSkillPath(
         candidate.github_html_url,
         args.lookup.repoFullName,
-        args.lookup.skillFilePath
+        args.lookup.skillFilePath,
+        args.sourceRef
       )
     );
   });
@@ -247,6 +274,7 @@ async function sniffSourceArtifact(
     const matchedAssessment = await buildMatchedAssessment({
       targetLabel,
       skillName: resolvedSource.name,
+      sourceRef: resolvedSource.sourceRef,
       sourceCommit: resolvedSource.sourceCommit,
       lookup: resolvedSource.githubLookup,
       tego,
@@ -394,6 +422,7 @@ async function sniffRegistryArtifacts(
       const matchedAssessment = await buildMatchedAssessment({
         targetLabel,
         skillName: metadata.name,
+        sourceRef: metadata.sourceRef,
         sourceCommit: metadata.sourceCommit,
         lookup,
         tego,
@@ -550,6 +579,7 @@ async function sniffProjectArtifacts(
       const matchedAssessment = await buildMatchedAssessment({
         targetLabel,
         skillName: resolvedMetadata.name,
+        sourceRef: resolvedMetadata.sourceRef,
         sourceCommit: resolvedMetadata.sourceCommit,
         lookup,
         tego,
