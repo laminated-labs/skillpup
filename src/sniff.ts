@@ -443,11 +443,24 @@ async function sniffProjectArtifacts(
     ...lockfile.skills.map((entry) => [artifactKey("skill", entry.name), entry] as const),
     ...lockfile.subagents.map((entry) => [artifactKey("subagent", entry.name), entry] as const),
   ]);
-  const registryHandle = await openRegistryForRead(effectiveRegistry);
+  let registryHandle: Awaited<ReturnType<typeof openRegistryForRead>> | null = null;
+  let readVersions: ReturnType<typeof createVersionReader> | null = null;
+  let readVersionMetadata: ReturnType<typeof createMetadataReader> | null = null;
+
+  async function ensureRegistryReaders() {
+    if (!registryHandle) {
+      registryHandle = await openRegistryForRead(effectiveRegistry);
+      readVersions = createVersionReader(registryHandle.backend);
+      readVersionMetadata = createMetadataReader(registryHandle.backend);
+    }
+
+    return {
+      readVersions: readVersions!,
+      readVersionMetadata: readVersionMetadata!,
+    };
+  }
 
   try {
-    const readVersions = createVersionReader(registryHandle.backend);
-    const readVersionMetadata = createMetadataReader(registryHandle.backend);
     const entries: SniffEntry[] = [];
 
     for (const requested of requestedArtifacts) {
@@ -469,6 +482,7 @@ async function sniffProjectArtifacts(
       const resolvedMetadata = locked
         ? { ...locked, kind } satisfies ArtifactVersionMetadata
         : await (async () => {
+            const { readVersions, readVersionMetadata } = await ensureRegistryReaders();
             const availableVersions = await readVersions(kind, requested.name);
             if (availableVersions.length === 0) {
               throw new Error(`Skill "${requested.name}" was not found in the registry.`);
@@ -506,7 +520,7 @@ async function sniffProjectArtifacts(
 
     return entries;
   } finally {
-    await registryHandle.cleanup();
+    await registryHandle?.cleanup();
   }
 }
 

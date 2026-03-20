@@ -12,6 +12,7 @@ import {
   getRemoteUrl,
   gitRefExists,
   listTags,
+  toGitRelativePath,
 } from "./git.js";
 import { pathExists } from "./fs-utils.js";
 import {
@@ -160,9 +161,17 @@ async function resolveLocalGitHubLookup(
     return null;
   }
 
+  const selectedSourceRoot =
+    sourcePath === "."
+      ? localSourceRoot
+      : resolveInside(localSourceRoot, sourcePath);
+  const repoRelativeSourcePath = toPosix(
+    (await toGitRelativePath(gitRoot, selectedSourceRoot)) || "."
+  );
+
   return {
     ...parsedRepo,
-    skillFilePath: buildSkillFilePath(sourcePath),
+    skillFilePath: buildSkillFilePath(repoRelativeSourcePath),
   };
 }
 

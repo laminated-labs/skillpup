@@ -11,21 +11,27 @@ import {
   formatProjectUpdateSummary,
   updateProjectArtifacts,
 } from "./update.js";
+import { pathExists } from "./fs-utils.js";
+import { normalizeStoredSourceUrl } from "./source-spec.js";
 import { formatArtifactRef } from "./utils.js";
 import { formatSniffReport, formatSniffSummary, sniffSkills } from "./sniff.js";
 
 const require = createRequire(import.meta.url);
 const packageJson = require("../package.json") as { version: string };
 
-function isSourceModeTarget(target: string) {
-  return (
+async function isSourceModeTarget(target: string, cwd: string) {
+  if (
     target.includes("/") ||
     target.includes("\\") ||
     target === "." ||
     target === ".." ||
     target.startsWith("git@") ||
     target.includes("://")
-  );
+  ) {
+    return true;
+  }
+
+  return pathExists(normalizeStoredSourceUrl(target, cwd));
 }
 
 export async function runCli(argv: string[] = process.argv) {
@@ -91,7 +97,8 @@ export async function runCli(argv: string[] = process.argv) {
       const sourceMode =
         !options.registry &&
         (Boolean(options.path || options.ref) ||
-          (targets.length === 1 && isSourceModeTarget(targets[0]!)));
+          (targets.length === 1 &&
+            (await isSourceModeTarget(targets[0]!, process.cwd()))));
       if (sourceMode && targets.length !== 1) {
         throw new Error("Source mode requires exactly one source repository or path.");
       }
