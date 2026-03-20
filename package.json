@@ -1,6 +1,6 @@
 {
   "name": "skillpup",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "CLI for storing and fetching agent skills from a private git-backed registry.",
   "main": "dist/cli.js",
   "repository": {
