@@ -99,6 +99,7 @@ Notes:
 | Variable | Purpose |
 | --- | --- |
 | `TEGO_API_KEY` | Required for `skillpup sniff`. Provide your own Tego API key as an environment variable. |
+| `SKILLPUP_TEGO_BASE_URL` | Optional override for the Tego API base URL used by `skillpup sniff`. Useful for staging or test environments. |
 
 To create a Tego API key:
 
