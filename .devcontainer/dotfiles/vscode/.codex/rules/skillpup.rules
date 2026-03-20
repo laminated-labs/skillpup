@@ -96,3 +96,16 @@ prefix_rule(
         "gh api repos/openai/codex/pulls",
     ],
 )
+
+prefix_rule(
+    pattern = ["python", "/workspaces/infrastructure/.agents/skills/gh-address-comments/scripts/fetch_comments.py"],
+    decision = "allow",
+    justification = "Repo-local skill fetches PR review comments for the current branch.",
+)
+
+# Allow both "python" and "python3" for the fetch_comments.py script to accommodate different environments.
+prefix_rule(
+    pattern = ["python3", "/workspaces/infrastructure/.agents/skills/gh-address-comments/scripts/fetch_comments.py"],
+    decision = "allow",
+    justification = "Repo-local skill fetches PR review comments for the current branch.",
+)
