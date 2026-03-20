@@ -556,7 +556,7 @@ export async function sniffSkills(options: SniffOptions = {}) {
 
 export function formatSniffReport(entries: SniffEntry[]) {
   if (entries.length === 0) {
-    return ["No skills were sniffed."];
+    return ["No targets were sniffed."];
   }
 
   const lines: string[] = [];
