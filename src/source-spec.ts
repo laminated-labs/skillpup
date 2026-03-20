@@ -82,7 +82,7 @@ export function parseGitHubRepoUrl(source: string): GitHubRepoRef | null {
     .split("/")
     .filter(Boolean)
     .map((segment) => segment.replace(/\.git$/, ""));
-  if (segments.length < 2) {
+  if (segments.length < 2 || segments.length > 2) {
     return null;
   }
 

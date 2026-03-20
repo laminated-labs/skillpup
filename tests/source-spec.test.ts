@@ -62,4 +62,9 @@ describe("parseGitHubRepoUrl", () => {
       repoFullName: "openai/skills",
     });
   });
+
+  it("rejects non-repository GitHub URLs with extra path segments", () => {
+    expect(parseGitHubRepoUrl("https://github.com/openai/skills/blob/main/SKILL.md")).toBeNull();
+    expect(parseGitHubRepoUrl("https://github.com/openai/skills/issues/123")).toBeNull();
+  });
 });

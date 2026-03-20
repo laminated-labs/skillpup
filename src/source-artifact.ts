@@ -211,7 +211,9 @@ async function resolveWorkingTreeArtifact(
     : localSourceRoot;
 
   if (!(await pathExists(selectedSourcePath))) {
-    throw new Error(`Artifact path does not exist: ${options.path}`);
+    throw new Error(
+      `Artifact path does not exist: ${options.path ?? selectedSourcePath}`
+    );
   }
 
   const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "skillpup-source-"));

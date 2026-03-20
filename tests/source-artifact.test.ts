@@ -55,4 +55,16 @@ describe("resolveSourceArtifact", () => {
       await resolved.cleanup();
     }
   });
+
+  it("reports the missing working-tree source path in the error", async () => {
+    const missingRepoPath = path.join(rootDir, "missing-repo");
+
+    await expect(
+      resolveSourceArtifact({
+        sourceGitUrl: missingRepoPath,
+        cwd: rootDir,
+        useWorkingTreeIfLocal: true,
+      })
+    ).rejects.toThrow(`Artifact path does not exist: ${missingRepoPath}`);
+  });
 });
