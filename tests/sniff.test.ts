@@ -22,7 +22,7 @@ type MockSkill = {
   skill_name: string;
   overall_risk?: string;
   analysis_timestamp?: string;
-  repo_full_name: string;
+  repo_full_name?: string;
   github_html_url: string;
 };
 
@@ -43,7 +43,7 @@ async function startTegoServer(options: {
       const owner = url.searchParams.get("owner");
       const skills = owner
         ? options.skills.filter(
-            (skill) => skill.repo_full_name.split("/", 1)[0] === owner
+            (skill) => skill.repo_full_name?.split("/", 1)[0] === owner
           )
         : options.skills;
       response.writeHead(200, { "content-type": "application/json" });
@@ -558,6 +558,65 @@ describe("skillpup sniff", () => {
         assessments: {
           "skill-case-mismatch": {
             id: "skill-case-mismatch",
+            skill_name: "reviewer",
+            sha: sourceCommit,
+            assessment: {},
+          },
+        },
+      });
+
+      try {
+        const result = await runCli(rootDir, ["sniff", source.repoDir], {
+          env: {
+            TEGO_API_KEY: "test-key",
+            SKILLPUP_TEGO_BASE_URL: server.baseUrl,
+          },
+        });
+
+        expect(result.exitCode).toBe(0);
+        expect(result.stdout).toContain("MATCHED: skill:reviewer [low]");
+      } finally {
+        await server.close();
+      }
+    },
+    TEST_TIMEOUT
+  );
+
+  it(
+    "ignores Tego candidates that omit repo_full_name",
+    async () => {
+      const source = await createSkillRepo({
+        skillName: "reviewer",
+        versions: ["v1.0.0"],
+      });
+      await runGit(
+        ["remote", "add", "origin", "git@github.com:example/reviewer.git"],
+        source.repoDir
+      );
+      const sourceCommit = await runGitCapture(["rev-parse", "HEAD"], source.repoDir);
+
+      const server = await startTegoServer({
+        expectedApiKey: "test-key",
+        skills: [
+          {
+            id: "skill-missing-repo",
+            skill_name: "reviewer",
+            overall_risk: "medium",
+            analysis_timestamp: "2026-03-16T21:03:14Z",
+            github_html_url: "https://github.com/example/reviewer/blob/main/SKILL.md",
+          },
+          {
+            id: "skill-valid-repo",
+            skill_name: "reviewer",
+            overall_risk: "low",
+            analysis_timestamp: "2026-03-17T21:03:14Z",
+            repo_full_name: "example/reviewer",
+            github_html_url: "https://github.com/example/reviewer/blob/main/SKILL.md",
+          },
+        ],
+        assessments: {
+          "skill-valid-repo": {
+            id: "skill-valid-repo",
             skill_name: "reviewer",
             sha: sourceCommit,
             assessment: {},

@@ -119,15 +119,20 @@ async function buildMatchedAssessment(args: {
   tego: ReturnType<typeof createTegoClient>;
 }): Promise<MatchedAssessment | null> {
   const candidates = await args.tego.searchSkillsByOwner(args.lookup.owner);
-  const matchingSkills = candidates.filter(
-    (candidate) =>
+  const matchingSkills = candidates.filter((candidate) => {
+    if (!candidate.repo_full_name) {
+      return false;
+    }
+
+    return (
       candidate.repo_full_name.toLowerCase() === args.lookup.repoFullName.toLowerCase() &&
       matchesGitHubSkillPath(
         candidate.github_html_url,
         args.lookup.repoFullName,
         args.lookup.skillFilePath
       )
-  );
+    );
+  });
   if (matchingSkills.length === 0) {
     return null;
   }
