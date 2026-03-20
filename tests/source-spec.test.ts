@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  parseGitHubRepoUrl,
   parseGitHubTreeUrl,
   splitGitHubTreeRefAndPath,
 } from "../src/source-spec.js";
@@ -41,6 +42,24 @@ describe("splitGitHubTreeRefAndPath", () => {
     ).resolves.toEqual({
       ref: "main",
       path: undefined,
+    });
+  });
+});
+
+describe("parseGitHubRepoUrl", () => {
+  it("parses HTTPS repository URLs", () => {
+    expect(parseGitHubRepoUrl("https://github.com/openai/skills.git")).toEqual({
+      owner: "openai",
+      repo: "skills",
+      repoFullName: "openai/skills",
+    });
+  });
+
+  it("parses scp-style GitHub URLs", () => {
+    expect(parseGitHubRepoUrl("git@github.com:openai/skills.git")).toEqual({
+      owner: "openai",
+      repo: "skills",
+      repoFullName: "openai/skills",
     });
   });
 });
