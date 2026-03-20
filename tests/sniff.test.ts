@@ -467,6 +467,57 @@ describe("skillpup sniff", () => {
   );
 
   it(
+    "does not match nested skill paths when sniffing a repo-root skill",
+    async () => {
+      const source = await createSkillRepo({
+        skillName: "repo-root-skill",
+        versions: ["v1.0.0"],
+      });
+      await runGit(
+        ["remote", "add", "origin", "git@github.com:example/repo-root-skill.git"],
+        source.repoDir
+      );
+
+      const server = await startTegoServer({
+        expectedApiKey: "test-key",
+        skills: [
+          {
+            id: "skill-nested",
+            skill_name: "repo-root-skill",
+            overall_risk: "critical",
+            analysis_timestamp: "2026-03-17T21:03:14Z",
+            repo_full_name: "example/repo-root-skill",
+            github_html_url:
+              "https://github.com/example/repo-root-skill/blob/main/nested/repo-root-skill/SKILL.md",
+          },
+        ],
+        assessments: {
+          "skill-nested": {
+            id: "skill-nested",
+            skill_name: "repo-root-skill",
+            assessment: {},
+          },
+        },
+      });
+
+      try {
+        const result = await runCli(source.repoDir, ["sniff", "."], {
+          env: {
+            TEGO_API_KEY: "test-key",
+            SKILLPUP_TEGO_BASE_URL: server.baseUrl,
+          },
+        });
+
+        expect(result.exitCode).toBe(0);
+        expect(result.stdout).toContain("NOT INDEXED: skill:repo-root-skill");
+      } finally {
+        await server.close();
+      }
+    },
+    TEST_TIMEOUT
+  );
+
+  it(
     "reports unsupported-source for a local repo without a GitHub origin",
     async () => {
       const source = await createSkillRepo({

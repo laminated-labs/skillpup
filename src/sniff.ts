@@ -32,7 +32,7 @@ import {
   normalizeSkillSourcePath,
   parseArtifactSpecifier,
 } from "./utils.js";
-import { parseGitHubRepoUrl } from "./source-spec.js";
+import { parseGitHubRepoUrl, parseGitHubTreeUrl } from "./source-spec.js";
 
 export type SniffStatus =
   | "matched"
@@ -89,11 +89,21 @@ function matchesGitHubSkillPath(
     const parsedUrl = new URL(githubHtmlUrl);
     const pathPrefix = `/${expectedRepoFullName}/blob/`.toLowerCase();
     const normalizedPathname = parsedUrl.pathname.toLowerCase();
-    return (
-      parsedUrl.hostname.toLowerCase() === "github.com" &&
-      normalizedPathname.startsWith(pathPrefix) &&
-      parsedUrl.pathname.endsWith(`/${expectedSkillFilePath}`)
-    );
+    if (
+      parsedUrl.hostname.toLowerCase() !== "github.com" ||
+      !normalizedPathname.startsWith(pathPrefix)
+    ) {
+      return false;
+    }
+
+    const afterBlobPrefix = parsedUrl.pathname.slice(pathPrefix.length);
+    const refSeparatorIndex = afterBlobPrefix.indexOf("/");
+    if (refSeparatorIndex < 0) {
+      return false;
+    }
+
+    const actualSkillFilePath = afterBlobPrefix.slice(refSeparatorIndex + 1);
+    return actualSkillFilePath === expectedSkillFilePath;
   } catch {
     return false;
   }
@@ -254,9 +264,31 @@ function buildRegistryLookup(metadata: ArtifactVersionMetadata): GitHubSkillLook
     return null;
   }
 
+  const parsedTreeUrl = parseGitHubTreeUrl(metadata.sourceUrl);
+  const sourceRefSegments = metadata.sourceRef.split("/").filter(Boolean);
+  let sourcePath = metadata.sourcePath;
+  if (parsedTreeUrl) {
+    const matchedTreePath =
+      sourceRefSegments.length > 0 &&
+      sourceRefSegments.every(
+        (segment, index) => parsedTreeUrl.refAndPathSegments[index] === segment
+      )
+        ? parsedTreeUrl.refAndPathSegments.slice(sourceRefSegments.length).join("/")
+        : "";
+
+    if (matchedTreePath) {
+      sourcePath = matchedTreePath;
+    } else if (
+      sourcePath === "." &&
+      parsedTreeUrl.refAndPathSegments.length > 1
+    ) {
+      sourcePath = parsedTreeUrl.refAndPathSegments.slice(1).join("/");
+    }
+  }
+
   return {
     ...parsedRepo,
-    skillFilePath: buildSkillFilePath(metadata.sourcePath),
+    skillFilePath: buildSkillFilePath(sourcePath),
   };
 }
 
