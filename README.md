@@ -15,6 +15,7 @@ Inspired by our great friends at [Ambush Capital](https://www.ambush.capital) an
 - initialize a registry repository with `skillpup bury init`
 - publish versioned skill bundles and subagent bundles into that registry with `skillpup bury`
 - fetch those artifacts into a consumer repository with `skillpup fetch`
+- look up [Tego](https://tego.ai) security assessments for skills with `skillpup sniff`
 - check for project updates from the configured registry with `skillpup update`
 - check for registry updates from upstream sources with `skillpup bury update`
 - record the chosen versions in `skillpup.config.yaml`
@@ -99,6 +100,20 @@ To apply every available project update in one run:
 skillpup update --apply --all
 ```
 
+To look up an existing assessment from the [Tego Skills Security Index](https://index.tego.security/skills/) for a local GitHub-backed skill before burying it:
+
+```bash
+export TEGO_API_KEY=tsk_...
+skillpup sniff ../reviewer-skill
+```
+
+To sniff every configured skill in a consumer repository:
+
+```bash
+export TEGO_API_KEY=tsk_...
+skillpup sniff
+```
+
 For the full onboarding flow and deeper examples, read [Getting Started](./documentation/getting-started.md).
 
 ## Command Summary
@@ -107,6 +122,7 @@ For the full onboarding flow and deeper examples, read [Getting Started](./docum
 | --- | --- |
 | `skillpup bury init` | Create a new registry repository scaffold |
 | `skillpup bury` | Publish a skill or subagent into a local registry |
+| `skillpup sniff` | Look up Tego security assessments for skills |
 | `skillpup fetch` | Install configured artifacts into a consumer repository |
 | `skillpup update` | Check or apply project updates from the configured registry |
 | `skillpup bury update` | Check or publish registry updates from upstream sources |
