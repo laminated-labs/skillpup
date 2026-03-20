@@ -109,6 +109,25 @@ async function rewriteBuriedSourceUrl(
   await fs.writeFile(metadataPath, stringify(metadata), "utf8");
 }
 
+async function rewriteBuriedSourcePath(
+  registryDir: string,
+  artifactName: string,
+  version: string,
+  sourcePath: string
+) {
+  const metadataPath = path.join(
+    registryDir,
+    "skills",
+    artifactName,
+    "versions",
+    version,
+    "metadata.yaml"
+  );
+  const metadata = await readYamlFile<Record<string, unknown>>(metadataPath);
+  metadata.sourcePath = sourcePath;
+  await fs.writeFile(metadataPath, stringify(metadata), "utf8");
+}
+
 async function rewriteConfigRegistryUrl(projectDir: string, registryUrl: string) {
   const configPath = path.join(projectDir, "skillpup.config.yaml");
   const config = await readYamlFile<Record<string, unknown>>(configPath);
@@ -395,6 +414,59 @@ describe("skillpup sniff", () => {
   );
 
   it(
+    "uses the repo directory name when sniffing the repo root working tree",
+    async () => {
+      const source = await createSkillRepo({
+        skillName: "repo-root-skill",
+        versions: ["v1.0.0"],
+      });
+      await runGit(
+        ["remote", "add", "origin", "git@github.com:example/repo-root-skill.git"],
+        source.repoDir
+      );
+      const sourceCommit = await runGitCapture(["rev-parse", "HEAD"], source.repoDir);
+
+      const server = await startTegoServer({
+        expectedApiKey: "test-key",
+        skills: [
+          {
+            id: "skill-repo-root",
+            skill_name: "repo-root-skill",
+            overall_risk: "medium",
+            analysis_timestamp: "2026-03-16T21:03:14Z",
+            repo_full_name: "example/repo-root-skill",
+            github_html_url:
+              "https://github.com/example/repo-root-skill/blob/main/SKILL.md",
+          },
+        ],
+        assessments: {
+          "skill-repo-root": {
+            id: "skill-repo-root",
+            skill_name: "repo-root-skill",
+            sha: sourceCommit,
+            assessment: {},
+          },
+        },
+      });
+
+      try {
+        const result = await runCli(source.repoDir, ["sniff", "."], {
+          env: {
+            TEGO_API_KEY: "test-key",
+            SKILLPUP_TEGO_BASE_URL: server.baseUrl,
+          },
+        });
+
+        expect(result.exitCode).toBe(0);
+        expect(result.stdout).toContain("MATCHED: skill:repo-root-skill [medium]");
+      } finally {
+        await server.close();
+      }
+    },
+    TEST_TIMEOUT
+  );
+
+  it(
     "reports unsupported-source for a local repo without a GitHub origin",
     async () => {
       const source = await createSkillRepo({
@@ -451,6 +523,58 @@ describe("skillpup sniff", () => {
 
         expect(result.exitCode).toBe(0);
         expect(result.stdout).toContain("NOT INDEXED: skill:reviewer");
+      } finally {
+        await server.close();
+      }
+    },
+    TEST_TIMEOUT
+  );
+
+  it(
+    "matches when the GitHub repo casing differs from Tego",
+    async () => {
+      const source = await createSkillRepo({
+        skillName: "reviewer",
+        versions: ["v1.0.0"],
+      });
+      await runGit(
+        ["remote", "add", "origin", "git@github.com:example/Reviewer.git"],
+        source.repoDir
+      );
+      const sourceCommit = await runGitCapture(["rev-parse", "HEAD"], source.repoDir);
+
+      const server = await startTegoServer({
+        expectedApiKey: "test-key",
+        skills: [
+          {
+            id: "skill-case-mismatch",
+            skill_name: "reviewer",
+            overall_risk: "low",
+            analysis_timestamp: "2026-03-16T21:03:14Z",
+            repo_full_name: "example/reviewer",
+            github_html_url: "https://github.com/example/reviewer/blob/main/SKILL.md",
+          },
+        ],
+        assessments: {
+          "skill-case-mismatch": {
+            id: "skill-case-mismatch",
+            skill_name: "reviewer",
+            sha: sourceCommit,
+            assessment: {},
+          },
+        },
+      });
+
+      try {
+        const result = await runCli(rootDir, ["sniff", source.repoDir], {
+          env: {
+            TEGO_API_KEY: "test-key",
+            SKILLPUP_TEGO_BASE_URL: server.baseUrl,
+          },
+        });
+
+        expect(result.exitCode).toBe(0);
+        expect(result.stdout).toContain("MATCHED: skill:reviewer [low]");
       } finally {
         await server.close();
       }
@@ -531,6 +655,83 @@ describe("skillpup sniff", () => {
   );
 
   it(
+    "normalizes leading dot segments in buried source paths",
+    async () => {
+      const registryDir = path.join(rootDir, "registry-dot-path");
+      await runCli(rootDir, ["bury", "init", registryDir]);
+      await initTestRepo(registryDir);
+
+      const source = await createSkillRepo({
+        skillName: "reviewer",
+        skillPath: "skills/reviewer",
+        versions: ["v1.0.0"],
+      });
+      await runCli(rootDir, [
+        "bury",
+        source.repoDir,
+        "--path",
+        "./skills/reviewer",
+        "--registry",
+        registryDir,
+      ]);
+      await rewriteBuriedSourceUrl(
+        registryDir,
+        "reviewer",
+        "v1.0.0",
+        "git@github.com:example/team-skills.git"
+      );
+      await rewriteBuriedSourcePath(
+        registryDir,
+        "reviewer",
+        "v1.0.0",
+        "./skills/reviewer"
+      );
+
+      const server = await startTegoServer({
+        expectedApiKey: "test-key",
+        skills: [
+          {
+            id: "skill-dot-path",
+            skill_name: "reviewer",
+            overall_risk: "high",
+            analysis_timestamp: "2026-03-16T21:03:14Z",
+            repo_full_name: "example/team-skills",
+            github_html_url:
+              "https://github.com/example/team-skills/blob/main/skills/reviewer/SKILL.md",
+          },
+        ],
+        assessments: {
+          "skill-dot-path": {
+            id: "skill-dot-path",
+            skill_name: "reviewer",
+            assessment: {},
+          },
+        },
+      });
+
+      try {
+        const result = await runCli(
+          rootDir,
+          ["sniff", "reviewer@v1.0.0", "--registry", registryDir],
+          {
+            env: {
+              TEGO_API_KEY: "test-key",
+              SKILLPUP_TEGO_BASE_URL: server.baseUrl,
+            },
+          }
+        );
+
+        expect(result.exitCode).toBe(0);
+        expect(result.stdout).toContain("MATCHED: reviewer@v1.0.0 [high]");
+        expect(result.stdout).toContain("source: example/team-skills:skills/reviewer/SKILL.md");
+      } finally {
+        await server.close();
+      }
+    },
+    TEST_TIMEOUT
+  );
+
+  it(
     "scans only skills when registry mode has no selectors",
     async () => {
       const registryDir = path.join(rootDir, "registry-all-skills");
@@ -593,7 +794,7 @@ describe("skillpup sniff", () => {
 
         expect(result.exitCode).toBe(0);
         expect(result.stdout).toContain("MATCHED: reviewer@v1.0.0 [low]");
-        expect(result.stdout).toContain("Sniffed 1 skill: 1 matched");
+        expect(result.stdout).toContain("Sniffed 1 target: 1 matched");
         expect(result.stdout).not.toContain("subagent:reviewer");
       } finally {
         await server.close();
@@ -711,6 +912,9 @@ describe("skillpup sniff", () => {
 
         expect(result.exitCode).toBe(0);
         expect(result.stdout).toContain("UNSUPPORTED KIND: subagent:reviewer");
+        expect(result.stdout).toContain(
+          "Sniffed 1 target: 0 matched, 0 not indexed, 0 unsupported source, 1 unsupported kind"
+        );
       } finally {
         await server.close();
       }

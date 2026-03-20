@@ -29,6 +29,7 @@ import {
 } from "./source-spec.js";
 import {
   compareSemverDescending,
+  normalizeSkillSourcePath,
   parseSemverLike,
   resolveInside,
   toPosix,
@@ -81,8 +82,36 @@ function deriveDefaultSkillName(sourceGitUrl: string, skillPath?: string) {
 }
 
 function buildSkillFilePath(sourcePath: string) {
-  const normalizedPath = sourcePath.replace(/\\/g, "/").replace(/\/+$/, "");
+  const normalizedPath = normalizeSkillSourcePath(sourcePath);
   return normalizedPath === "." ? "SKILL.md" : `${normalizedPath}/SKILL.md`;
+}
+
+function buildGitHubLookup(repo: GitHubRepoRef, sourcePath: string): GitHubSkillLookup {
+  return {
+    ...repo,
+    skillFilePath: buildSkillFilePath(sourcePath),
+  };
+}
+
+function resolveSelectedArtifactName(
+  selectedArtifact: SelectedSourceArtifact,
+  sourceGitUrl: string,
+  skillPath: string | undefined,
+  explicitName?: string
+) {
+  if (selectedArtifact.kind !== "skill") {
+    validateArtifactName(selectedArtifact.name);
+    return selectedArtifact.name;
+  }
+
+  const derivedName = explicitName ?? deriveDefaultSkillName(sourceGitUrl, skillPath);
+  try {
+    validateArtifactName(derivedName);
+    return derivedName;
+  } catch {
+    validateArtifactName(selectedArtifact.name);
+    return selectedArtifact.name;
+  }
 }
 
 async function selectSourceArtifact(
@@ -169,10 +198,7 @@ async function resolveLocalGitHubLookup(
     (await toGitRelativePath(gitRoot, selectedSourceRoot)) || "."
   );
 
-  return {
-    ...parsedRepo,
-    skillFilePath: buildSkillFilePath(repoRelativeSourcePath),
-  };
+  return buildGitHubLookup(parsedRepo, repoRelativeSourcePath);
 }
 
 async function resolveWorkingTreeArtifact(
@@ -199,17 +225,19 @@ async function resolveWorkingTreeArtifact(
   const sourceRef = await getCurrentBranch(localSourceRoot);
   const sourceCommit = await getHeadCommit(localSourceRoot);
   const sourcePath = options.path ?? ".";
-  const name =
-    selectedArtifact.kind === "skill"
-      ? options.name ?? deriveDefaultSkillName(options.sourceGitUrl, options.path)
-      : selectedArtifact.name;
-  validateArtifactName(name);
+  const name = resolveSelectedArtifactName(
+    selectedArtifact,
+    options.sourceGitUrl,
+    options.path,
+    options.name
+  );
 
+  const directRepo =
+    parseGitHubRepoUrl(options.sourceGitUrl) ?? parseGitHubRepoUrl(storedSourceUrl);
   const githubLookup =
     selectedArtifact.kind !== "skill"
       ? null
-      : parseGitHubRepoUrl(options.sourceGitUrl) ??
-        parseGitHubRepoUrl(storedSourceUrl) ??
+      : (directRepo ? buildGitHubLookup(directRepo, sourcePath) : null) ??
         (await resolveLocalGitHubLookup(localSourceRoot, sourcePath));
 
   return {
@@ -299,17 +327,19 @@ export async function resolveSourceArtifact(
       options.name
     );
 
-    const name =
-      selectedArtifact.kind === "skill"
-        ? options.name ?? deriveDefaultSkillName(options.sourceGitUrl, inferredPath)
-        : selectedArtifact.name;
-    validateArtifactName(name);
+    const name = resolveSelectedArtifactName(
+      selectedArtifact,
+      options.sourceGitUrl,
+      inferredPath,
+      options.name
+    );
 
+    const directRepo =
+      parseGitHubRepoUrl(options.sourceGitUrl) ?? parseGitHubRepoUrl(storedSourceUrl);
     const githubLookup =
       selectedArtifact.kind !== "skill"
         ? null
-        : parseGitHubRepoUrl(options.sourceGitUrl) ??
-          parseGitHubRepoUrl(storedSourceUrl) ??
+        : (directRepo ? buildGitHubLookup(directRepo, sourcePath) : null) ??
           (localSourceRoot
             ? await resolveLocalGitHubLookup(localSourceRoot, sourcePath)
             : null);

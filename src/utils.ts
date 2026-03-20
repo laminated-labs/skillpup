@@ -13,6 +13,16 @@ export function toPosix(input: string) {
   return input.split(path.sep).join("/");
 }
 
+export function normalizeSkillSourcePath(sourcePath: string) {
+  const normalizedPath = path.posix
+    .normalize(sourcePath.replace(/\\/g, "/"))
+    .replace(/\/+$/, "");
+  if (!normalizedPath || normalizedPath === ".") {
+    return ".";
+  }
+  return normalizedPath.replace(/^\.\//, "");
+}
+
 export function resolveInside(root: string, ...segments: string[]) {
   const resolved = path.resolve(root, ...segments);
   const relative = path.relative(root, resolved);

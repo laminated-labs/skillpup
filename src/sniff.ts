@@ -29,6 +29,7 @@ import {
   formatArtifactRef,
   formatArtifactSpecifier,
   LOCKFILE_BASENAME,
+  normalizeSkillSourcePath,
   parseArtifactSpecifier,
 } from "./utils.js";
 import { parseGitHubRepoUrl } from "./source-spec.js";
@@ -71,7 +72,7 @@ type MatchedAssessment = {
 };
 
 function buildSkillFilePath(sourcePath: string) {
-  const normalizedPath = sourcePath.replace(/\\/g, "/").replace(/\/+$/, "");
+  const normalizedPath = normalizeSkillSourcePath(sourcePath);
   return normalizedPath === "." ? "SKILL.md" : `${normalizedPath}/SKILL.md`;
 }
 
@@ -86,10 +87,11 @@ function matchesGitHubSkillPath(
 
   try {
     const parsedUrl = new URL(githubHtmlUrl);
-    const pathPrefix = `/${expectedRepoFullName}/blob/`;
+    const pathPrefix = `/${expectedRepoFullName}/blob/`.toLowerCase();
+    const normalizedPathname = parsedUrl.pathname.toLowerCase();
     return (
-      parsedUrl.hostname === "github.com" &&
-      parsedUrl.pathname.startsWith(pathPrefix) &&
+      parsedUrl.hostname.toLowerCase() === "github.com" &&
+      normalizedPathname.startsWith(pathPrefix) &&
       parsedUrl.pathname.endsWith(`/${expectedSkillFilePath}`)
     );
   } catch {
@@ -119,7 +121,7 @@ async function buildMatchedAssessment(args: {
   const candidates = await args.tego.searchSkillsByOwner(args.lookup.owner);
   const matchingSkills = candidates.filter(
     (candidate) =>
-      candidate.repo_full_name === args.lookup.repoFullName &&
+      candidate.repo_full_name.toLowerCase() === args.lookup.repoFullName.toLowerCase() &&
       matchesGitHubSkillPath(
         candidate.github_html_url,
         args.lookup.repoFullName,
@@ -644,5 +646,5 @@ export function formatSniffSummary(entries: SniffEntry[]) {
     }
   }
 
-  return `Sniffed ${entries.length} skill${entries.length === 1 ? "" : "s"}: ${counts.matched} matched, ${counts.notIndexed} not indexed, ${counts.unsupportedSource} unsupported source, ${counts.unsupportedKind} unsupported kind`;
+  return `Sniffed ${entries.length} target${entries.length === 1 ? "" : "s"}: ${counts.matched} matched, ${counts.notIndexed} not indexed, ${counts.unsupportedSource} unsupported source, ${counts.unsupportedKind} unsupported kind`;
 }
