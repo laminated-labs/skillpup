@@ -130,13 +130,18 @@ ${options.extraToml ? `${options.extraToml.trim()}\n` : ""}`,
   };
 }
 
-export async function runCli(cwd: string, args: string[]) {
+export async function runCli(
+  cwd: string,
+  args: string[],
+  options?: { env?: NodeJS.ProcessEnv }
+) {
   const cliPath = path.resolve(process.cwd(), "dist/cli.js");
   try {
     const result = await execa("node", [cliPath, ...args], {
       cwd,
       env: {
         ...process.env,
+        ...options?.env,
         FORCE_COLOR: "0",
       },
     });

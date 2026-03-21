@@ -5,6 +5,12 @@ export type ParsedGitHubTreeUrl = {
   refAndPathSegments: string[];
 };
 
+export type GitHubRepoRef = {
+  owner: string;
+  repo: string;
+  repoFullName: string;
+};
+
 export function isScpLikeGitUrl(sourceUrl: string) {
   return /^[^@]+@[^:]+:.+/.test(sourceUrl);
 }
@@ -35,9 +41,61 @@ export function parseGitHubTreeUrl(source: string): ParsedGitHubTreeUrl | null {
   }
 
   const [owner, repoName] = segments;
+  const normalizedRepoName = repoName.replace(/\.git$/, "");
   return {
-    repoUrl: `https://github.com/${owner}/${repoName}.git`,
+    repoUrl: `https://github.com/${owner}/${normalizedRepoName}.git`,
     refAndPathSegments: segments.slice(3),
+  };
+}
+
+export function parseGitHubRepoUrl(source: string): GitHubRepoRef | null {
+  const parsedTreeUrl = parseGitHubTreeUrl(source);
+  if (parsedTreeUrl) {
+    return parseGitHubRepoUrl(parsedTreeUrl.repoUrl);
+  }
+
+  if (isScpLikeGitUrl(source)) {
+    const match = source.match(/^[^@]+@github\.com:([^/]+)\/([^/]+?)(?:\.git)?$/);
+    if (!match) {
+      return null;
+    }
+
+    const [, owner, repo] = match;
+    return {
+      owner,
+      repo,
+      repoFullName: `${owner}/${repo}`,
+    };
+  }
+
+  let parsedUrl: URL;
+  try {
+    parsedUrl = new URL(source);
+  } catch {
+    return null;
+  }
+
+  if (parsedUrl.hostname !== "github.com") {
+    return null;
+  }
+
+  const segments = parsedUrl.pathname
+    .split("/")
+    .filter(Boolean)
+    .map((segment) => segment.replace(/\.git$/, ""));
+  if (segments.length < 2 || segments.length > 2) {
+    return null;
+  }
+
+  const [owner, repo] = segments;
+  if (!owner || !repo) {
+    return null;
+  }
+
+  return {
+    owner,
+    repo,
+    repoFullName: `${owner}/${repo}`,
   };
 }
 

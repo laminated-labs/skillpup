@@ -94,7 +94,63 @@ Notes:
 - `skillpup fetch reviewer@v1.2.3` updates config and lockfile to that exact skill version
 - `skillpup fetch subagent:courier-reviewer@v1.0.0` updates config and lockfile to that exact subagent version
 
+## Environment
+
+| Variable | Purpose |
+| --- | --- |
+| `TEGO_API_KEY` | Required for `skillpup sniff`. Provide your own Tego API key as an environment variable. |
+| `SKILLPUP_TEGO_BASE_URL` | Optional override for the Tego API base URL used by `skillpup sniff`. Useful for staging or test environments. |
+
+To create a Tego API key:
+
+1. Open the [Tego Skills Security Index](https://index.tego.security/skills/) and sign in with Google or GitHub SSO.
+2. Generate an API key from the Tego account API-key flow.
+3. Save the plaintext `tsk_...` value immediately; Tego only returns it once on create or rotate.
+4. Export it before running `skillpup sniff`.
+
+`skillpup` does not store this key in `skillpup.config.yaml` or `skillpup.lock.yaml`.
+
 ## Command Reference
+
+### `skillpup sniff [targets...]`
+
+Looks up skill security assessments from [Tego](https://tego.ai) and the [Tego Skills Security Index](https://index.tego.security/skills/).
+
+Options:
+
+- `--registry <path-or-git-url>`: switch to registry mode and treat `targets...` as buried artifact selectors
+- `--path <artifact-path>`: source mode only; path to the skill root within the source repository
+- `--ref <git-ref>`: source mode only; git ref to inspect before matching
+
+Project mode:
+
+- run `skillpup sniff` in a consumer repo to inspect every configured skill in `skillpup.config.yaml`
+- run `skillpup sniff gh-address-comments pr-writer` to inspect a subset of configured skills
+- project mode uses `skillpup.lock.yaml` when available so installed skills resolve back to their recorded source metadata instead of the untracked files under `.agents/skills`
+- configured subagents report `unsupported-kind`
+
+Source mode:
+
+- run `skillpup sniff <source-git-url-or-local-path>` to inspect a source repository before burying it
+- source mode mirrors `skillpup bury` path and ref resolution, but it never publishes anything
+- local source mode requires the repo to have a GitHub `origin` remote so `skillpup` can map the selected `SKILL.md` to the Tego index
+- if the source cannot be mapped to a GitHub repository and skill path, `sniff` reports `unsupported-source`
+
+Registry mode:
+
+- run `skillpup sniff reviewer --registry ../skill-registry` to inspect a buried skill
+- selectors accept `name`, `skill:name`, `name@version`, or `skill:name@version`
+- `skillpup sniff --registry ../skill-registry` scans the latest buried version of every skill in the registry
+- subagents are outside Tego's current scope; explicit `subagent:...` selectors report `unsupported-kind`, and registry-wide scans ignore subagents
+- buried skills whose recorded `sourceUrl` is not a GitHub repository URL report `unsupported-source`
+
+Behavior:
+
+- `sniff` is report-only in v1; it does not fail on matched risk levels, `not-indexed`, `unsupported-kind`, or `unsupported-source`
+- `sniff` fails only for invalid usage, missing `TEGO_API_KEY`, or Tego auth and transport errors
+- matched results report the Tego risk level, repo path, assessment freshness (`exact-commit`, `different-commit`, or `unknown`), and best-effort findings, permissions, and capability summaries
+- `sniff` does not upload unpublished skills to Tego; it only matches against skills that Tego has already indexed
+- `sniff` is currently GitHub-oriented because it matches against Tego's GitHub-backed skill index
 
 ### `skillpup fetch [artifacts...]`
 

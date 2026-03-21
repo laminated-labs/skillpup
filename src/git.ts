@@ -94,6 +94,14 @@ export async function getCurrentBranch(cwd: string) {
   return branch || "HEAD";
 }
 
+export async function getRemoteUrl(cwd: string, remoteName = "origin") {
+  const remoteUrl = await runGitCapture(["config", "--get", `remote.${remoteName}.url`], cwd);
+  if (!remoteUrl) {
+    throw new Error(`Git remote "${remoteName}" is not configured.`);
+  }
+  return remoteUrl;
+}
+
 export async function gitRefExists(cwd: string, ref: string) {
   const candidates = [
     ref,

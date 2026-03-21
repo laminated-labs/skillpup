@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  parseGitHubRepoUrl,
   parseGitHubTreeUrl,
   splitGitHubTreeRefAndPath,
 } from "../src/source-spec.js";
@@ -13,6 +14,13 @@ describe("parseGitHubTreeUrl", () => {
     ).toEqual({
       repoUrl: "https://github.com/openai/skills.git",
       refAndPathSegments: ["main", "skills", ".curated", "figma"],
+    });
+  });
+
+  it("normalizes tree URLs whose repo segment already ends with .git", () => {
+    expect(parseGitHubTreeUrl("https://github.com/openai/skills.git/tree/main")).toEqual({
+      repoUrl: "https://github.com/openai/skills.git",
+      refAndPathSegments: ["main"],
     });
   });
 
@@ -41,6 +49,41 @@ describe("splitGitHubTreeRefAndPath", () => {
     ).resolves.toEqual({
       ref: "main",
       path: undefined,
+    });
+  });
+});
+
+describe("parseGitHubRepoUrl", () => {
+  it("parses HTTPS repository URLs", () => {
+    expect(parseGitHubRepoUrl("https://github.com/openai/skills.git")).toEqual({
+      owner: "openai",
+      repo: "skills",
+      repoFullName: "openai/skills",
+    });
+  });
+
+  it("parses scp-style GitHub URLs", () => {
+    expect(parseGitHubRepoUrl("git@github.com:openai/skills.git")).toEqual({
+      owner: "openai",
+      repo: "skills",
+      repoFullName: "openai/skills",
+    });
+  });
+
+  it("rejects scp-style GitHub URLs with extra path segments", () => {
+    expect(parseGitHubRepoUrl("git@github.com:openai/skills/blob/main/SKILL.md")).toBeNull();
+  });
+
+  it("rejects non-repository GitHub URLs with extra path segments", () => {
+    expect(parseGitHubRepoUrl("https://github.com/openai/skills/blob/main/SKILL.md")).toBeNull();
+    expect(parseGitHubRepoUrl("https://github.com/openai/skills/issues/123")).toBeNull();
+  });
+
+  it("parses tree URLs whose repo segment already ends with .git", () => {
+    expect(parseGitHubRepoUrl("https://github.com/openai/skills.git/tree/main")).toEqual({
+      owner: "openai",
+      repo: "skills",
+      repoFullName: "openai/skills",
     });
   });
 });

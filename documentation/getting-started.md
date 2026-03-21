@@ -52,6 +52,13 @@ skillpup bury ../team-skills \
   --commit
 ```
 
+If the source repository is GitHub-backed and you want a [Tego Skills Security Index](https://index.tego.security/skills/) assessment before publishing, you can sniff it directly:
+
+```bash
+export TEGO_API_KEY=tsk_...
+skillpup sniff ../team-skills --path skills/reviewer
+```
+
 To publish a project-scoped Codex subagent, point `--path` at the TOML file inside the source repository:
 
 ```bash
