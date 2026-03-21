@@ -41,8 +41,9 @@ export function parseGitHubTreeUrl(source: string): ParsedGitHubTreeUrl | null {
   }
 
   const [owner, repoName] = segments;
+  const normalizedRepoName = repoName.replace(/\.git$/, "");
   return {
-    repoUrl: `https://github.com/${owner}/${repoName}.git`,
+    repoUrl: `https://github.com/${owner}/${normalizedRepoName}.git`,
     refAndPathSegments: segments.slice(3),
   };
 }

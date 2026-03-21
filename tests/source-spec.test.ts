@@ -17,6 +17,13 @@ describe("parseGitHubTreeUrl", () => {
     });
   });
 
+  it("normalizes tree URLs whose repo segment already ends with .git", () => {
+    expect(parseGitHubTreeUrl("https://github.com/openai/skills.git/tree/main")).toEqual({
+      repoUrl: "https://github.com/openai/skills.git",
+      refAndPathSegments: ["main"],
+    });
+  });
+
   it("returns null for plain repository URLs", () => {
     expect(parseGitHubTreeUrl("https://github.com/openai/skills.git")).toBeNull();
   });
@@ -70,5 +77,13 @@ describe("parseGitHubRepoUrl", () => {
   it("rejects non-repository GitHub URLs with extra path segments", () => {
     expect(parseGitHubRepoUrl("https://github.com/openai/skills/blob/main/SKILL.md")).toBeNull();
     expect(parseGitHubRepoUrl("https://github.com/openai/skills/issues/123")).toBeNull();
+  });
+
+  it("parses tree URLs whose repo segment already ends with .git", () => {
+    expect(parseGitHubRepoUrl("https://github.com/openai/skills.git/tree/main")).toEqual({
+      owner: "openai",
+      repo: "skills",
+      repoFullName: "openai/skills",
+    });
   });
 });
