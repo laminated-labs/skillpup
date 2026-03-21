@@ -23,6 +23,11 @@ export function normalizeSkillSourcePath(sourcePath: string) {
   return normalizedPath.replace(/^\.\//, "");
 }
 
+export function buildSkillFilePath(sourcePath: string) {
+  const normalizedPath = normalizeSkillSourcePath(sourcePath);
+  return normalizedPath === "." ? "SKILL.md" : `${normalizedPath}/SKILL.md`;
+}
+
 export function resolveInside(root: string, ...segments: string[]) {
   const resolved = path.resolve(root, ...segments);
   const relative = path.relative(root, resolved);

@@ -28,8 +28,8 @@ import {
   type GitHubRepoRef,
 } from "./source-spec.js";
 import {
+  buildSkillFilePath,
   compareSemverDescending,
-  normalizeSkillSourcePath,
   parseSemverLike,
   resolveInside,
   toPosix,
@@ -79,11 +79,6 @@ function deriveDefaultSkillName(sourceGitUrl: string, skillPath?: string) {
     .replace(/\/+$/, "")
     .replace(/\.git$/, "");
   return path.posix.basename(normalizedSource);
-}
-
-function buildSkillFilePath(sourcePath: string) {
-  const normalizedPath = normalizeSkillSourcePath(sourcePath);
-  return normalizedPath === "." ? "SKILL.md" : `${normalizedPath}/SKILL.md`;
 }
 
 function buildGitHubLookup(repo: GitHubRepoRef, sourcePath: string): GitHubSkillLookup {

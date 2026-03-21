@@ -26,10 +26,10 @@ import {
   type TegoSkillSummary,
 } from "./tego.js";
 import {
+  buildSkillFilePath,
   formatArtifactRef,
   formatArtifactSpecifier,
   LOCKFILE_BASENAME,
-  normalizeSkillSourcePath,
   parseArtifactSpecifier,
 } from "./utils.js";
 import { parseGitHubRepoUrl, parseGitHubTreeUrl } from "./source-spec.js";
@@ -70,11 +70,6 @@ type SniffOptions = {
 type MatchedAssessment = {
   entry: SniffEntry;
 };
-
-function buildSkillFilePath(sourcePath: string) {
-  const normalizedPath = normalizeSkillSourcePath(sourcePath);
-  return normalizedPath === "." ? "SKILL.md" : `${normalizedPath}/SKILL.md`;
-}
 
 function extractGitHubBlobSkillPath(
   pathname: string,
