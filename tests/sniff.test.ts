@@ -109,6 +109,25 @@ async function rewriteBuriedSourceUrl(
   await fs.writeFile(metadataPath, stringify(metadata), "utf8");
 }
 
+async function rewriteBuriedSourceRef(
+  registryDir: string,
+  artifactName: string,
+  version: string,
+  sourceRef: string
+) {
+  const metadataPath = path.join(
+    registryDir,
+    "skills",
+    artifactName,
+    "versions",
+    version,
+    "metadata.yaml"
+  );
+  const metadata = await readYamlFile<Record<string, unknown>>(metadataPath);
+  metadata.sourceRef = sourceRef;
+  await fs.writeFile(metadataPath, stringify(metadata), "utf8");
+}
+
 async function rewriteBuriedSourcePath(
   registryDir: string,
   artifactName: string,
@@ -1035,6 +1054,81 @@ describe("skillpup sniff", () => {
 
         expect(result.exitCode).toBe(0);
         expect(result.stdout).toContain("MATCHED: gh-address-comments@v1.0.0 [high]");
+      } finally {
+        await server.close();
+      }
+    },
+    TEST_TIMEOUT
+  );
+
+  it(
+    "keeps repo-root source paths when lockfile tree URLs use slash refs",
+    async () => {
+      const registryDir = path.join(rootDir, "registry-project-mode-slash-ref-root");
+      await runCli(rootDir, ["bury", "init", registryDir]);
+      await initTestRepo(registryDir);
+
+      const source = await createSkillRepo({
+        skillName: "repo-root-skill",
+        versions: ["v1.0.0"],
+      });
+      await runCli(rootDir, ["bury", source.repoDir, "--registry", registryDir]);
+      await rewriteBuriedSourceUrl(
+        registryDir,
+        "repo-root-skill",
+        "v1.0.0",
+        "https://github.com/example/team-skills/tree/feature/dog-mode"
+      );
+      await rewriteBuriedSourceRef(
+        registryDir,
+        "repo-root-skill",
+        "v1.0.0",
+        "feature/dog-mode"
+      );
+
+      const consumerDir = path.join(rootDir, "consumer-project-mode-slash-ref-root");
+      await initTestRepo(consumerDir);
+      await runCli(consumerDir, [
+        "fetch",
+        "repo-root-skill",
+        "--registry",
+        registryDir,
+      ]);
+      await rewriteConfigRegistryUrl(consumerDir, "./missing-registry");
+
+      const server = await startTegoServer({
+        expectedApiKey: "test-key",
+        skills: [
+          {
+            id: "skill-project-root-slash-ref",
+            skill_name: "repo-root-skill",
+            overall_risk: "medium",
+            analysis_timestamp: "2026-03-17T21:03:14Z",
+            repo_full_name: "example/team-skills",
+            github_html_url:
+              "https://github.com/example/team-skills/blob/feature/dog-mode/SKILL.md",
+          },
+        ],
+        assessments: {
+          "skill-project-root-slash-ref": {
+            id: "skill-project-root-slash-ref",
+            skill_name: "repo-root-skill",
+            assessment: {},
+          },
+        },
+      });
+
+      try {
+        const result = await runCli(consumerDir, ["sniff", "repo-root-skill"], {
+          env: {
+            TEGO_API_KEY: "test-key",
+            SKILLPUP_TEGO_BASE_URL: server.baseUrl,
+          },
+        });
+
+        expect(result.exitCode).toBe(0);
+        expect(result.stdout).toContain("MATCHED: repo-root-skill@v1.0.0 [medium]");
+        expect(result.stdout).toContain("source: example/team-skills:SKILL.md");
       } finally {
         await server.close();
       }

@@ -296,17 +296,27 @@ function buildRegistryLookup(metadata: ArtifactVersionMetadata): GitHubSkillLook
   const sourceRefSegments = metadata.sourceRef.split("/").filter(Boolean);
   let sourcePath = metadata.sourcePath;
   if (parsedTreeUrl) {
-    const matchedTreePath =
+    let refPrefixMatched = false;
+    let matchedTreePath = "";
+    if (
       sourceRefSegments.length > 0 &&
       sourceRefSegments.every(
         (segment, index) => parsedTreeUrl.refAndPathSegments[index] === segment
       )
-        ? parsedTreeUrl.refAndPathSegments.slice(sourceRefSegments.length).join("/")
-        : "";
+    ) {
+      refPrefixMatched = true;
+      const remainingSegments = parsedTreeUrl.refAndPathSegments.slice(
+        sourceRefSegments.length
+      );
+      if (remainingSegments.length > 0) {
+        matchedTreePath = remainingSegments.join("/");
+      }
+    }
 
     if (matchedTreePath) {
       sourcePath = matchedTreePath;
     } else if (
+      !refPrefixMatched &&
       sourcePath === "." &&
       parsedTreeUrl.refAndPathSegments.length > 1
     ) {
