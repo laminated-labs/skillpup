@@ -21,6 +21,7 @@ import {
   readSubagentManifest,
 } from "./subagents.js";
 import {
+  isAbsoluteLocalSourcePath,
   normalizeStoredSourceUrl,
   parseGitHubRepoUrl,
   parseGitHubTreeUrl,
@@ -259,7 +260,7 @@ export async function resolveSourceArtifact(
   const storedSourceUrl = normalizeStoredSourceUrl(options.sourceGitUrl, cwd);
   const parsedGitHubTreeUrl = parseGitHubTreeUrl(options.sourceGitUrl);
   const cloneSourceUrl = parsedGitHubTreeUrl?.repoUrl ?? storedSourceUrl;
-  const localSourceRoot = path.isAbsolute(storedSourceUrl) ? storedSourceUrl : null;
+  const localSourceRoot = isAbsoluteLocalSourcePath(storedSourceUrl) ? storedSourceUrl : null;
 
   if (options.useWorkingTreeIfLocal && localSourceRoot && !options.ref && !parsedGitHubTreeUrl) {
     return resolveWorkingTreeArtifact(localSourceRoot, options, storedSourceUrl);

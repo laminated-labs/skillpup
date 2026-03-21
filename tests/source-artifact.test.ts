@@ -67,4 +67,20 @@ describe("resolveSourceArtifact", () => {
       })
     ).rejects.toThrow(`Artifact path does not exist: ${missingRepoPath}`);
   });
+
+  it("treats Windows absolute paths as local working-tree sources", async () => {
+    const source = await createSkillRepo({
+      skillName: "reviewer",
+      versions: ["v1.0.0"],
+    });
+    cloneState.sourceRepoDir = source.repoDir;
+
+    await expect(
+      resolveSourceArtifact({
+        sourceGitUrl: "C:\\missing-repo",
+        cwd: rootDir,
+        useWorkingTreeIfLocal: true,
+      })
+    ).rejects.toThrow("Artifact path does not exist: C:\\missing-repo");
+  });
 });
