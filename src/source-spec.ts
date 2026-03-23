@@ -243,10 +243,8 @@ export function normalizeStoredSourceUrl(sourceUrl: string, cwd: string) {
   }
 
   try {
-    const parsedUrl = new URL(sourceUrl);
-    if (parsedUrl.protocol) {
-      return sourceUrl;
-    }
+    new URL(sourceUrl);
+    return sourceUrl;
   } catch {
     // Fall through to local path normalization.
   }

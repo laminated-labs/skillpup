@@ -24,7 +24,6 @@ import {
   isScpLikeGitUrl,
   isWindowsAbsolutePath,
   resolveHostedRepoUrls,
-  parseHostedSourceViewUrl,
 } from "./source-spec.js";
 import {
   defaultUpdatePrompts,
@@ -162,11 +161,6 @@ async function resolveSourceLookupTargets(
 ) {
   if (isAbsoluteLocalSourcePath(sourceUrl)) {
     return [sourceUrl];
-  }
-
-  const parsedHostedSourceViewUrl = parseHostedSourceViewUrl(sourceUrl);
-  if (parsedHostedSourceViewUrl) {
-    return parsedHostedSourceViewUrl.repoUrls;
   }
 
   const hostedRepoUrls = resolveHostedRepoUrls(sourceUrl);
