@@ -627,6 +627,33 @@ describe("skillpup sniff", () => {
   );
 
   it(
+    "reports Bitbucket-backed local sources as unsupported-source with resolved context",
+    async () => {
+      const source = await createSkillRepo({
+        skillName: "reviewer",
+        versions: ["v1.0.0"],
+      });
+      await runGit(
+        ["remote", "add", "origin", "git@bitbucket.org:example/reviewer.git"],
+        source.repoDir
+      );
+
+      const result = await runCli(rootDir, ["sniff", source.repoDir], {
+        env: {
+          TEGO_API_KEY: "test-key",
+          SKILLPUP_TEGO_BASE_URL: "http://127.0.0.1:9",
+        },
+      });
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain("UNSUPPORTED SOURCE: skill:reviewer");
+      expect(result.stdout).toContain("source: example/reviewer:SKILL.md");
+      expect(result.stdout).toContain("Bitbucket Cloud source resolved successfully");
+    },
+    TEST_TIMEOUT
+  );
+
+  it(
     "reports not-indexed when Tego has no matching skill",
     async () => {
       const source = await createSkillRepo({
@@ -1182,6 +1209,99 @@ describe("skillpup sniff", () => {
       } finally {
         await server.close();
       }
+    },
+    TEST_TIMEOUT
+  );
+
+  it(
+    "reports unsupported-source for Bitbucket-backed buried registry skills with resolved context",
+    async () => {
+      const registryDir = path.join(rootDir, "registry-bitbucket-unsupported");
+      await runCli(rootDir, ["bury", "init", registryDir]);
+      await initTestRepo(registryDir);
+
+      const source = await createSkillRepo({
+        skillName: "reviewer",
+        skillPath: "skills/reviewer",
+        versions: ["v1.0.0"],
+      });
+      await runCli(rootDir, [
+        "bury",
+        source.repoDir,
+        "--path",
+        "skills/reviewer",
+        "--registry",
+        registryDir,
+      ]);
+      await rewriteBuriedSourceUrl(
+        registryDir,
+        "reviewer",
+        "v1.0.0",
+        "https://bitbucket.org/example/team-skills/src/main/skills/reviewer"
+      );
+
+      const result = await runCli(
+        rootDir,
+        ["sniff", "reviewer@v1.0.0", "--registry", registryDir],
+        {
+          env: {
+            TEGO_API_KEY: "test-key",
+            SKILLPUP_TEGO_BASE_URL: "http://127.0.0.1:9",
+          },
+        }
+      );
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain("UNSUPPORTED SOURCE: reviewer@v1.0.0");
+      expect(result.stdout).toContain("source: example/team-skills:skills/reviewer/SKILL.md");
+      expect(result.stdout).toContain("Bitbucket Cloud source resolved successfully");
+    },
+    TEST_TIMEOUT
+  );
+
+  it(
+    "reports unsupported-source for Bitbucket-backed project skills from lockfile metadata",
+    async () => {
+      const registryDir = path.join(rootDir, "registry-project-bitbucket-unsupported");
+      await runCli(rootDir, ["bury", "init", registryDir]);
+      await initTestRepo(registryDir);
+
+      const source = await createSkillRepo({
+        skillName: "reviewer",
+        skillPath: "skills/reviewer",
+        versions: ["v1.0.0"],
+      });
+      await runCli(rootDir, [
+        "bury",
+        source.repoDir,
+        "--path",
+        "skills/reviewer",
+        "--registry",
+        registryDir,
+      ]);
+      await rewriteBuriedSourceUrl(
+        registryDir,
+        "reviewer",
+        "v1.0.0",
+        "https://bitbucket.org/example/team-skills/src/main/skills/reviewer"
+      );
+
+      const consumerDir = path.join(rootDir, "consumer-project-bitbucket-unsupported");
+      await initTestRepo(consumerDir);
+      await runCli(consumerDir, ["fetch", "reviewer", "--registry", registryDir]);
+      await rewriteConfigRegistryUrl(consumerDir, "./missing-registry");
+
+      const result = await runCli(consumerDir, ["sniff", "reviewer"], {
+        env: {
+          TEGO_API_KEY: "test-key",
+          SKILLPUP_TEGO_BASE_URL: "http://127.0.0.1:9",
+        },
+      });
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain("UNSUPPORTED SOURCE: reviewer@v1.0.0");
+      expect(result.stdout).toContain("source: example/team-skills:skills/reviewer/SKILL.md");
+      expect(result.stdout).toContain("Bitbucket Cloud source resolved successfully");
     },
     TEST_TIMEOUT
   );

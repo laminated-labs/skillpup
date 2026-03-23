@@ -71,6 +71,16 @@ type MatchedAssessment = {
   entry: SniffEntry;
 };
 
+type GitHubSkillLookup = HostedSkillLookup & {
+  forge: "github";
+};
+
+function isGitHubSkillLookup(
+  lookup: HostedSkillLookup | null | undefined
+): lookup is GitHubSkillLookup {
+  return lookup?.forge === "github";
+}
+
 function extractGitHubBlobSkillPath(
   pathname: string,
   expectedRepoFullName: string,
@@ -146,7 +156,7 @@ async function buildMatchedAssessment(args: {
   skillName: string;
   sourceRef: string;
   sourceCommit: string;
-  lookup: HostedSkillLookup;
+  lookup: GitHubSkillLookup;
   tego: ReturnType<typeof createTegoClient>;
 }): Promise<MatchedAssessment | null> {
   const candidates = await args.tego.searchSkillsByOwner(args.lookup.owner);
@@ -202,12 +212,15 @@ async function buildMatchedAssessment(args: {
 
 function buildUnsupportedSourceEntry(
   targetLabel: string,
-  detail: string
+  detail: string,
+  lookup?: HostedSkillLookup | null
 ): SniffEntry {
   return {
     status: "unsupported-source",
     targetLabel,
     detail,
+    repoFullName: lookup?.repoFullName,
+    skillFilePath: lookup?.skillFilePath,
     findings: [],
     permissions: [],
     capabilities: [],
@@ -261,7 +274,17 @@ async function sniffSourceArtifact(
       return [
         buildUnsupportedSourceEntry(
           targetLabel,
-          "Source is not a GitHub-backed repository with an origin remote."
+          "Source is not a GitHub- or Bitbucket Cloud-backed repository with an origin remote."
+        ),
+      ];
+    }
+
+    if (!isGitHubSkillLookup(resolvedSource.hostedLookup)) {
+      return [
+        buildUnsupportedSourceEntry(
+          targetLabel,
+          "Bitbucket Cloud source resolved successfully, but Tego matching currently requires GitHub-backed source metadata.",
+          resolvedSource.hostedLookup
         ),
       ];
     }
@@ -418,7 +441,18 @@ async function sniffRegistryArtifacts(
         entries.push(
           buildUnsupportedSourceEntry(
             targetLabel,
-            "Buried sourceUrl is not a GitHub repository URL."
+            "Buried sourceUrl is not a GitHub or Bitbucket Cloud repository URL."
+          )
+        );
+        continue;
+      }
+
+      if (!isGitHubSkillLookup(lookup)) {
+        entries.push(
+          buildUnsupportedSourceEntry(
+            targetLabel,
+            "Bitbucket Cloud source resolved successfully, but Tego matching currently requires GitHub-backed source metadata.",
+            lookup
           )
         );
         continue;
@@ -575,7 +609,18 @@ async function sniffProjectArtifacts(
         entries.push(
           buildUnsupportedSourceEntry(
             targetLabel,
-            "Recorded sourceUrl is not a GitHub repository URL."
+            "Recorded sourceUrl is not a GitHub or Bitbucket Cloud repository URL."
+          )
+        );
+        continue;
+      }
+
+      if (!isGitHubSkillLookup(lookup)) {
+        entries.push(
+          buildUnsupportedSourceEntry(
+            targetLabel,
+            "Bitbucket Cloud source resolved successfully, but Tego matching currently requires GitHub-backed source metadata.",
+            lookup
           )
         );
         continue;
