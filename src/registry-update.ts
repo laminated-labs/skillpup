@@ -180,7 +180,7 @@ async function resolveSourceLookupTargets(
   } catch {
     parsedUrl = null;
   }
-  if (parsedUrl && parsedUrl.protocol) {
+  if (parsedUrl) {
     return [sourceUrl];
   }
 

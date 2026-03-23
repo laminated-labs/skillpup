@@ -1260,6 +1260,54 @@ describe("skillpup sniff", () => {
   );
 
   it(
+    "derives the correct skill path from Bitbucket source-view URLs with slash refs",
+    async () => {
+      const registryDir = path.join(rootDir, "registry-bitbucket-slash-ref");
+      await runCli(rootDir, ["bury", "init", registryDir]);
+      await initTestRepo(registryDir);
+
+      const source = await createSkillRepo({
+        skillName: "reviewer",
+        skillPath: "skills/reviewer",
+        versions: ["v1.0.0"],
+      });
+      await runCli(rootDir, [
+        "bury",
+        source.repoDir,
+        "--path",
+        "skills/reviewer",
+        "--registry",
+        registryDir,
+      ]);
+      await rewriteBuriedSourceUrl(
+        registryDir,
+        "reviewer",
+        "v1.0.0",
+        "https://bitbucket.org/example/team-skills/src/feature%2Fdog-mode/skills/reviewer"
+      );
+      await rewriteBuriedSourceRef(registryDir, "reviewer", "v1.0.0", "feature/dog-mode");
+      await rewriteBuriedSourcePath(registryDir, "reviewer", "v1.0.0", "wrong/path");
+
+      const result = await runCli(
+        rootDir,
+        ["sniff", "reviewer@v1.0.0", "--registry", registryDir],
+        {
+          env: {
+            TEGO_API_KEY: "test-key",
+            SKILLPUP_TEGO_BASE_URL: "http://127.0.0.1:9",
+          },
+        }
+      );
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain("UNSUPPORTED SOURCE: reviewer@v1.0.0");
+      expect(result.stdout).toContain("source: example/team-skills:skills/reviewer/SKILL.md");
+      expect(result.stdout).not.toContain("source: example/team-skills:wrong/path/SKILL.md");
+    },
+    TEST_TIMEOUT
+  );
+
+  it(
     "reports unsupported-source for Bitbucket-backed project skills from lockfile metadata",
     async () => {
       const registryDir = path.join(rootDir, "registry-project-bitbucket-unsupported");

@@ -311,23 +311,30 @@ function buildRegistryLookup(metadata: ArtifactVersionMetadata): HostedSkillLook
   }
 
   const parsedSourceViewUrl = parseHostedSourceViewUrl(metadata.sourceUrl);
-  const sourceRefSegments = metadata.sourceRef.split("/").filter(Boolean);
   let sourcePath = metadata.sourcePath;
   if (parsedSourceViewUrl) {
+    const normalizedSourceRef = metadata.sourceRef
+      .split("/")
+      .filter(Boolean)
+      .join("/");
     let refPrefixMatched = false;
     let matchedTreePath = "";
-    if (
-      sourceRefSegments.length > 0 &&
-      sourceRefSegments.every(
-        (segment, index) => parsedSourceViewUrl.refAndPathSegments[index] === segment
-      )
-    ) {
-      refPrefixMatched = true;
-      const remainingSegments = parsedSourceViewUrl.refAndPathSegments.slice(
-        sourceRefSegments.length
-      );
-      if (remainingSegments.length > 0) {
-        matchedTreePath = remainingSegments.join("/");
+    if (normalizedSourceRef) {
+      for (
+        let index = parsedSourceViewUrl.refAndPathSegments.length;
+        index >= 1;
+        index -= 1
+      ) {
+        const candidateRef = parsedSourceViewUrl.refAndPathSegments
+          .slice(0, index)
+          .join("/");
+        if (candidateRef !== normalizedSourceRef) {
+          continue;
+        }
+
+        refPrefixMatched = true;
+        matchedTreePath = parsedSourceViewUrl.refAndPathSegments.slice(index).join("/");
+        break;
       }
     }
 
