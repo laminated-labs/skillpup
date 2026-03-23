@@ -177,10 +177,6 @@ export function parseHostedRepoUrl(source: string): HostedRepoRef | null {
     return null;
   }
 
-  if (!parsedUrl.protocol) {
-    return null;
-  }
-
   const segments = splitDecodedPathSegments(parsedUrl.pathname).map((segment) =>
     segment.replace(/\.git$/, "")
   );

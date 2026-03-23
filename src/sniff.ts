@@ -229,7 +229,7 @@ function buildUnsupportedSourceEntry(
 
 function buildNotIndexedEntry(
   targetLabel: string,
-  lookup: HostedSkillLookup
+  lookup: GitHubSkillLookup
 ): SniffEntry {
   return {
     status: "not-indexed",
