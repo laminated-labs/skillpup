@@ -23,7 +23,7 @@ import {
   isAbsoluteLocalSourcePath,
   isScpLikeGitUrl,
   isWindowsAbsolutePath,
-  parseGitHubTreeUrl,
+  resolveHostedRepoUrls,
 } from "./source-spec.js";
 import {
   defaultUpdatePrompts,
@@ -154,18 +154,18 @@ function getTagName(ref: string) {
 
 export { isScpLikeGitUrl, isWindowsAbsolutePath };
 
-export async function resolveSourceLookupTarget(
+async function resolveSourceLookupTargets(
   sourceUrl: string,
   registryRoot: string,
   cwd: string
 ) {
   if (isAbsoluteLocalSourcePath(sourceUrl)) {
-    return sourceUrl;
+    return [sourceUrl];
   }
 
-  const parsedGitHubTreeUrl = parseGitHubTreeUrl(sourceUrl);
-  if (parsedGitHubTreeUrl) {
-    return parsedGitHubTreeUrl.repoUrl;
+  const hostedRepoUrls = resolveHostedRepoUrls(sourceUrl);
+  if (hostedRepoUrls) {
+    return hostedRepoUrls;
   }
 
   let parsedUrl: URL | null = null;
@@ -174,12 +174,12 @@ export async function resolveSourceLookupTarget(
   } catch {
     parsedUrl = null;
   }
-  if (parsedUrl && parsedUrl.protocol) {
-    return sourceUrl;
+  if (parsedUrl) {
+    return [sourceUrl];
   }
 
   if (isScpLikeGitUrl(sourceUrl)) {
-    return sourceUrl;
+    return [sourceUrl];
   }
 
   const candidates = [
@@ -189,13 +189,36 @@ export async function resolveSourceLookupTarget(
   for (const candidate of candidates) {
     try {
       await fs.access(candidate);
-      return candidate;
+      return [candidate];
     } catch {
       continue;
     }
   }
 
   throw new Error(`Unable to resolve local source path "${sourceUrl}" from this registry.`);
+}
+
+async function listRemoteRefsWithFallback(repoUrls: string[]) {
+  const uniqueRepoUrls = [...new Set(repoUrls.filter(Boolean))];
+  let lastError: unknown;
+
+  for (const repoUrl of uniqueRepoUrls) {
+    try {
+      return await listRemoteRefs(repoUrl);
+    } catch (error) {
+      lastError = error;
+    }
+  }
+
+  throw lastError ?? new Error("Unable to list remote refs.");
+}
+
+export async function resolveSourceLookupTarget(
+  sourceUrl: string,
+  registryRoot: string,
+  cwd: string
+) {
+  return (await resolveSourceLookupTargets(sourceUrl, registryRoot, cwd))[0]!;
 }
 
 async function buildRegistryUpdateEntry(args: {
@@ -226,25 +249,22 @@ async function buildRegistryUpdateEntry(args: {
   const currentVersion = version;
 
   try {
-    const lookupTarget = await resolveSourceLookupTarget(sourceUrl, registryRoot, cwd);
-    let remoteRefsPromise = remoteRefsBySource.get(lookupTarget);
+    const lookupTargets = await resolveSourceLookupTargets(sourceUrl, registryRoot, cwd);
+    const lookupCacheKey = lookupTargets.join("\0");
+    let remoteRefsPromise = remoteRefsBySource.get(lookupCacheKey);
     if (!remoteRefsPromise) {
-      remoteRefsPromise = listRemoteRefs(lookupTarget);
-      remoteRefsBySource.set(lookupTarget, remoteRefsPromise);
+      remoteRefsPromise = listRemoteRefsWithFallback(lookupTargets);
+      remoteRefsBySource.set(lookupCacheKey, remoteRefsPromise);
     }
     const remoteRefs = await remoteRefsPromise;
 
     const currentSourceSemver = parseSemverLike(sourceRef);
     if (currentSourceSemver) {
       const newerTags = remoteRefs
-        .map((entry) => ({
-          entry,
-          tagName: getTagName(entry.ref),
-        }))
-        .filter(
-          (entry): entry is { entry: RemoteGitRef; tagName: string } =>
-            Boolean(entry.tagName) && Boolean(parseSemverLike(entry.tagName))
-        )
+        .flatMap((entry) => {
+          const tagName = getTagName(entry.ref);
+          return tagName && parseSemverLike(tagName) ? [{ entry, tagName }] : [];
+        })
         .filter((entry) => parseSemverLike(entry.tagName)!.compare(currentSourceSemver) > 0)
         .sort((left, right) => compareSemverDescending(left.tagName, right.tagName));
 

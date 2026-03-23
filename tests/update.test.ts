@@ -87,6 +87,25 @@ describe("skillpup update flows", () => {
     ).resolves.toBe(sourceUrl);
   });
 
+  it("treats scp-style Bitbucket Cloud remotes as remote lookup targets", async () => {
+    const sourceUrl = "git@bitbucket.org:laminated-labs/skillpup.git";
+
+    expect(isScpLikeGitUrl(sourceUrl)).toBe(true);
+    await expect(
+      resolveSourceLookupTarget(sourceUrl, "/tmp/registry", "/tmp/cwd")
+    ).resolves.toBe(sourceUrl);
+  });
+
+  it("maps Bitbucket Cloud source-view URLs back to their clone URL", async () => {
+    await expect(
+      resolveSourceLookupTarget(
+        "https://bitbucket.org/example/team-skills/src/main/skills/reviewer",
+        "/tmp/registry",
+        "/tmp/cwd"
+      )
+    ).resolves.toBe("https://bitbucket.org/example/team-skills.git");
+  });
+
   it("treats Windows absolute paths as local lookup targets", async () => {
     const sourceUrl = "C:/Users/example/reviewer";
 

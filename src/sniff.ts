@@ -16,7 +16,7 @@ import {
   listRegistryArtifacts,
   resolveRequestedKind,
 } from "./registry-artifacts.js";
-import { resolveSourceArtifact, type GitHubSkillLookup } from "./source-artifact.js";
+import { resolveSourceArtifact, type HostedSkillLookup } from "./source-artifact.js";
 import {
   createTegoClient,
   normalizeAssessmentPayload,
@@ -32,7 +32,7 @@ import {
   LOCKFILE_BASENAME,
   parseArtifactSpecifier,
 } from "./utils.js";
-import { parseGitHubRepoUrl, parseGitHubTreeUrl } from "./source-spec.js";
+import { parseHostedRepoUrl, parseHostedSourceViewUrl } from "./source-spec.js";
 
 export type SniffStatus =
   | "matched"
@@ -70,6 +70,16 @@ type SniffOptions = {
 type MatchedAssessment = {
   entry: SniffEntry;
 };
+
+type GitHubSkillLookup = HostedSkillLookup & {
+  forge: "github";
+};
+
+function isGitHubSkillLookup(
+  lookup: HostedSkillLookup | null | undefined
+): lookup is GitHubSkillLookup {
+  return lookup?.forge === "github";
+}
 
 function extractGitHubBlobSkillPath(
   pathname: string,
@@ -202,12 +212,15 @@ async function buildMatchedAssessment(args: {
 
 function buildUnsupportedSourceEntry(
   targetLabel: string,
-  detail: string
+  detail: string,
+  lookup?: HostedSkillLookup | null
 ): SniffEntry {
   return {
     status: "unsupported-source",
     targetLabel,
     detail,
+    repoFullName: lookup?.repoFullName,
+    skillFilePath: lookup?.skillFilePath,
     findings: [],
     permissions: [],
     capabilities: [],
@@ -257,11 +270,21 @@ async function sniffSourceArtifact(
       ];
     }
 
-    if (!resolvedSource.githubLookup) {
+    if (!resolvedSource.hostedLookup) {
       return [
         buildUnsupportedSourceEntry(
           targetLabel,
-          "Source is not a GitHub-backed repository with an origin remote."
+          "Source is not a GitHub- or Bitbucket Cloud-backed repository with an origin remote."
+        ),
+      ];
+    }
+
+    if (!isGitHubSkillLookup(resolvedSource.hostedLookup)) {
+      return [
+        buildUnsupportedSourceEntry(
+          targetLabel,
+          "Bitbucket Cloud source resolved successfully, but Tego matching currently requires GitHub-backed source metadata.",
+          resolvedSource.hostedLookup
         ),
       ];
     }
@@ -271,40 +294,47 @@ async function sniffSourceArtifact(
       skillName: resolvedSource.name,
       sourceRef: resolvedSource.sourceRef,
       sourceCommit: resolvedSource.sourceCommit,
-      lookup: resolvedSource.githubLookup,
+      lookup: resolvedSource.hostedLookup,
       tego,
     });
 
-    return [matchedAssessment?.entry ?? buildNotIndexedEntry(targetLabel, resolvedSource.githubLookup)];
+    return [matchedAssessment?.entry ?? buildNotIndexedEntry(targetLabel, resolvedSource.hostedLookup)];
   } finally {
     await resolvedSource.cleanup();
   }
 }
 
-function buildRegistryLookup(metadata: ArtifactVersionMetadata): GitHubSkillLookup | null {
-  const parsedRepo = parseGitHubRepoUrl(metadata.sourceUrl);
+function buildRegistryLookup(metadata: ArtifactVersionMetadata): HostedSkillLookup | null {
+  const parsedRepo = parseHostedRepoUrl(metadata.sourceUrl);
   if (!parsedRepo) {
     return null;
   }
 
-  const parsedTreeUrl = parseGitHubTreeUrl(metadata.sourceUrl);
-  const sourceRefSegments = metadata.sourceRef.split("/").filter(Boolean);
+  const parsedSourceViewUrl = parseHostedSourceViewUrl(metadata.sourceUrl);
   let sourcePath = metadata.sourcePath;
-  if (parsedTreeUrl) {
+  if (parsedSourceViewUrl) {
+    const normalizedSourceRef = metadata.sourceRef
+      .split("/")
+      .filter(Boolean)
+      .join("/");
     let refPrefixMatched = false;
     let matchedTreePath = "";
-    if (
-      sourceRefSegments.length > 0 &&
-      sourceRefSegments.every(
-        (segment, index) => parsedTreeUrl.refAndPathSegments[index] === segment
-      )
-    ) {
-      refPrefixMatched = true;
-      const remainingSegments = parsedTreeUrl.refAndPathSegments.slice(
-        sourceRefSegments.length
-      );
-      if (remainingSegments.length > 0) {
-        matchedTreePath = remainingSegments.join("/");
+    if (normalizedSourceRef) {
+      for (
+        let index = parsedSourceViewUrl.refAndPathSegments.length;
+        index >= 1;
+        index -= 1
+      ) {
+        const candidateRef = parsedSourceViewUrl.refAndPathSegments
+          .slice(0, index)
+          .join("/");
+        if (candidateRef !== normalizedSourceRef) {
+          continue;
+        }
+
+        refPrefixMatched = true;
+        matchedTreePath = parsedSourceViewUrl.refAndPathSegments.slice(index).join("/");
+        break;
       }
     }
 
@@ -313,9 +343,9 @@ function buildRegistryLookup(metadata: ArtifactVersionMetadata): GitHubSkillLook
     } else if (
       !refPrefixMatched &&
       sourcePath === "." &&
-      parsedTreeUrl.refAndPathSegments.length > 1
+      parsedSourceViewUrl.refAndPathSegments.length > 1
     ) {
-      sourcePath = parsedTreeUrl.refAndPathSegments.slice(1).join("/");
+      sourcePath = parsedSourceViewUrl.refAndPathSegments.slice(1).join("/");
     }
   }
 
@@ -418,7 +448,18 @@ async function sniffRegistryArtifacts(
         entries.push(
           buildUnsupportedSourceEntry(
             targetLabel,
-            "Buried sourceUrl is not a GitHub repository URL."
+            "Buried sourceUrl is not a GitHub or Bitbucket Cloud repository URL."
+          )
+        );
+        continue;
+      }
+
+      if (!isGitHubSkillLookup(lookup)) {
+        entries.push(
+          buildUnsupportedSourceEntry(
+            targetLabel,
+            "Bitbucket Cloud source resolved successfully, but Tego matching currently requires GitHub-backed source metadata.",
+            lookup
           )
         );
         continue;
@@ -575,7 +616,18 @@ async function sniffProjectArtifacts(
         entries.push(
           buildUnsupportedSourceEntry(
             targetLabel,
-            "Recorded sourceUrl is not a GitHub repository URL."
+            "Recorded sourceUrl is not a GitHub or Bitbucket Cloud repository URL."
+          )
+        );
+        continue;
+      }
+
+      if (!isGitHubSkillLookup(lookup)) {
+        entries.push(
+          buildUnsupportedSourceEntry(
+            targetLabel,
+            "Bitbucket Cloud source resolved successfully, but Tego matching currently requires GitHub-backed source metadata.",
+            lookup
           )
         );
         continue;

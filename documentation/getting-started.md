@@ -41,7 +41,7 @@ By default, `skillpup bury`:
 - uses the highest semver-like tag as the stored version when available
 - falls back to the selected ref or source commit when no semver tag is available
 - derives the skill name from the repository name unless `--name` is provided
-- accepts GitHub tree URLs and automatically infers `--ref` and `--path`
+- accepts GitHub tree URLs and Bitbucket Cloud source-view URLs and automatically infers `--ref` and `--path`
 
 If the skill lives in a nested directory, point at it explicitly:
 
@@ -52,12 +52,26 @@ skillpup bury ../team-skills \
   --commit
 ```
 
+You can also publish directly from a Bitbucket Cloud source-view URL when the artifact path is
+already in the URL:
+
+```bash
+skillpup bury \
+  https://bitbucket.org/example/team-skills/src/main/skills/reviewer \
+  --registry ../skill-registry \
+  --commit
+```
+
 If the source repository is GitHub-backed and you want a [Tego Skills Security Index](https://index.tego.security/skills/) assessment before publishing, you can sniff it directly:
 
 ```bash
 export TEGO_API_KEY=tsk_...
 skillpup sniff ../team-skills --path skills/reviewer
 ```
+
+If the source repository is Bitbucket Cloud-backed, bury, fetch, update, and `bury update` work
+normally, but `skillpup sniff` reports `unsupported-source` because the current Tego lookup flow
+matches only GitHub-backed source metadata.
 
 To publish a project-scoped Codex subagent, point `--path` at the TOML file inside the source repository:
 
