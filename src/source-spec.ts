@@ -1,15 +1,39 @@
 import path from "node:path";
 
-export type ParsedGitHubTreeUrl = {
+export type HostedGitForge = "github" | "bitbucket-cloud";
+
+export type ParsedHostedSourceViewUrl = {
+  forge: HostedGitForge;
+  owner: string;
+  repo: string;
+  repoFullName: string;
   repoUrl: string;
   refAndPathSegments: string[];
 };
 
-export type GitHubRepoRef = {
+export type HostedRepoRef = {
+  forge: HostedGitForge;
   owner: string;
   repo: string;
   repoFullName: string;
 };
+
+const hostedForgeConfigs = [
+  {
+    forge: "github",
+    hostname: "github.com",
+    sourceViewSegment: "tree",
+  },
+  {
+    forge: "bitbucket-cloud",
+    hostname: "bitbucket.org",
+    sourceViewSegment: "src",
+  },
+] as const satisfies Array<{
+  forge: HostedGitForge;
+  hostname: string;
+  sourceViewSegment: string;
+}>;
 
 export function isScpLikeGitUrl(sourceUrl: string) {
   return /^[^@]+@[^:]+:.+/.test(sourceUrl);
@@ -23,7 +47,49 @@ export function isAbsoluteLocalSourcePath(sourcePath: string) {
   return path.isAbsolute(sourcePath) || isWindowsAbsolutePath(sourcePath);
 }
 
-export function parseGitHubTreeUrl(source: string): ParsedGitHubTreeUrl | null {
+function decodePathSegment(segment: string) {
+  try {
+    return decodeURIComponent(segment);
+  } catch {
+    return segment;
+  }
+}
+
+function splitDecodedPathSegments(pathname: string) {
+  return pathname
+    .split("/")
+    .filter(Boolean)
+    .map(decodePathSegment);
+}
+
+function getHostedForgeConfig(hostname: string) {
+  const normalizedHostname = hostname.toLowerCase();
+  return hostedForgeConfigs.find((config) => config.hostname === normalizedHostname) ?? null;
+}
+
+function buildHostedRepoRef(
+  forge: HostedGitForge,
+  owner: string,
+  repo: string
+): HostedRepoRef {
+  return {
+    forge,
+    owner,
+    repo,
+    repoFullName: `${owner}/${repo}`,
+  };
+}
+
+function buildHostedCloneUrl(
+  forge: HostedGitForge,
+  owner: string,
+  repo: string
+) {
+  const config = hostedForgeConfigs.find((entry) => entry.forge === forge)!;
+  return `https://${config.hostname}/${owner}/${repo}.git`;
+}
+
+export function parseHostedSourceViewUrl(source: string): ParsedHostedSourceViewUrl | null {
   let parsedUrl: URL;
   try {
     parsedUrl = new URL(source);
@@ -31,41 +97,52 @@ export function parseGitHubTreeUrl(source: string): ParsedGitHubTreeUrl | null {
     return null;
   }
 
-  if (parsedUrl.protocol !== "https:" || parsedUrl.hostname !== "github.com") {
+  if (parsedUrl.protocol !== "https:") {
     return null;
   }
 
-  const segments = parsedUrl.pathname.split("/").filter(Boolean);
-  if (segments.length < 4 || segments[2] !== "tree") {
+  const forgeConfig = getHostedForgeConfig(parsedUrl.hostname);
+  if (!forgeConfig) {
+    return null;
+  }
+
+  const segments = splitDecodedPathSegments(parsedUrl.pathname);
+  if (segments.length < 4 || segments[2] !== forgeConfig.sourceViewSegment) {
     return null;
   }
 
   const [owner, repoName] = segments;
   const normalizedRepoName = repoName.replace(/\.git$/, "");
   return {
-    repoUrl: `https://github.com/${owner}/${normalizedRepoName}.git`,
+    ...buildHostedRepoRef(forgeConfig.forge, owner, normalizedRepoName),
+    repoUrl: buildHostedCloneUrl(forgeConfig.forge, owner, normalizedRepoName),
     refAndPathSegments: segments.slice(3),
   };
 }
 
-export function parseGitHubRepoUrl(source: string): GitHubRepoRef | null {
-  const parsedTreeUrl = parseGitHubTreeUrl(source);
-  if (parsedTreeUrl) {
-    return parseGitHubRepoUrl(parsedTreeUrl.repoUrl);
+export function parseHostedRepoUrl(source: string): HostedRepoRef | null {
+  const parsedSourceViewUrl = parseHostedSourceViewUrl(source);
+  if (parsedSourceViewUrl) {
+    return buildHostedRepoRef(
+      parsedSourceViewUrl.forge,
+      parsedSourceViewUrl.owner,
+      parsedSourceViewUrl.repo
+    );
   }
 
   if (isScpLikeGitUrl(source)) {
-    const match = source.match(/^[^@]+@github\.com:([^/]+)\/([^/]+?)(?:\.git)?$/);
+    const match = source.match(/^[^@]+@([^:]+):([^/]+)\/([^/]+?)(?:\.git)?$/);
     if (!match) {
       return null;
     }
 
-    const [, owner, repo] = match;
-    return {
-      owner,
-      repo,
-      repoFullName: `${owner}/${repo}`,
-    };
+    const [, hostname, owner, repo] = match;
+    const forgeConfig = getHostedForgeConfig(hostname);
+    if (!forgeConfig) {
+      return null;
+    }
+
+    return buildHostedRepoRef(forgeConfig.forge, owner, repo);
   }
 
   let parsedUrl: URL;
@@ -75,14 +152,18 @@ export function parseGitHubRepoUrl(source: string): GitHubRepoRef | null {
     return null;
   }
 
-  if (parsedUrl.hostname !== "github.com") {
+  const forgeConfig = getHostedForgeConfig(parsedUrl.hostname);
+  if (!forgeConfig) {
     return null;
   }
 
-  const segments = parsedUrl.pathname
-    .split("/")
-    .filter(Boolean)
-    .map((segment) => segment.replace(/\.git$/, ""));
+  if (parsedUrl.protocol !== "https:" && parsedUrl.protocol !== "ssh:") {
+    return null;
+  }
+
+  const segments = splitDecodedPathSegments(parsedUrl.pathname).map((segment) =>
+    segment.replace(/\.git$/, "")
+  );
   if (segments.length < 2 || segments.length > 2) {
     return null;
   }
@@ -92,14 +173,10 @@ export function parseGitHubRepoUrl(source: string): GitHubRepoRef | null {
     return null;
   }
 
-  return {
-    owner,
-    repo,
-    repoFullName: `${owner}/${repo}`,
-  };
+  return buildHostedRepoRef(forgeConfig.forge, owner, repo);
 }
 
-export async function splitGitHubTreeRefAndPath(
+export async function splitHostedRefAndPath(
   refAndPathSegments: string[],
   refExists: (candidate: string) => Promise<boolean>
 ) {
@@ -120,7 +197,7 @@ export async function splitGitHubTreeRefAndPath(
 }
 
 export function normalizeStoredSourceUrl(sourceUrl: string, cwd: string) {
-  if (parseGitHubTreeUrl(sourceUrl) || isScpLikeGitUrl(sourceUrl)) {
+  if (parseHostedSourceViewUrl(sourceUrl) || isScpLikeGitUrl(sourceUrl)) {
     return sourceUrl;
   }
 

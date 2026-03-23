@@ -23,7 +23,7 @@ import {
   isAbsoluteLocalSourcePath,
   isScpLikeGitUrl,
   isWindowsAbsolutePath,
-  parseGitHubTreeUrl,
+  parseHostedSourceViewUrl,
 } from "./source-spec.js";
 import {
   defaultUpdatePrompts,
@@ -163,9 +163,9 @@ export async function resolveSourceLookupTarget(
     return sourceUrl;
   }
 
-  const parsedGitHubTreeUrl = parseGitHubTreeUrl(sourceUrl);
-  if (parsedGitHubTreeUrl) {
-    return parsedGitHubTreeUrl.repoUrl;
+  const parsedHostedSourceViewUrl = parseHostedSourceViewUrl(sourceUrl);
+  if (parsedHostedSourceViewUrl) {
+    return parsedHostedSourceViewUrl.repoUrl;
   }
 
   let parsedUrl: URL | null = null;

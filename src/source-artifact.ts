@@ -23,10 +23,10 @@ import {
 import {
   isAbsoluteLocalSourcePath,
   normalizeStoredSourceUrl,
-  parseGitHubRepoUrl,
-  parseGitHubTreeUrl,
-  splitGitHubTreeRefAndPath,
-  type GitHubRepoRef,
+  parseHostedRepoUrl,
+  parseHostedSourceViewUrl,
+  splitHostedRefAndPath,
+  type HostedRepoRef,
 } from "./source-spec.js";
 import {
   buildSkillFilePath,
@@ -37,7 +37,7 @@ import {
   validateArtifactName,
 } from "./utils.js";
 
-export type GitHubSkillLookup = GitHubRepoRef & {
+export type HostedSkillLookup = HostedRepoRef & {
   skillFilePath: string;
 };
 
@@ -50,7 +50,7 @@ export type ResolvedSourceArtifact = {
   sourceCommit: string;
   storedSourceUrl: string;
   selectedTag?: string;
-  githubLookup: GitHubSkillLookup | null;
+  hostedLookup: HostedSkillLookup | null;
   cleanup: () => Promise<void>;
 };
 
@@ -69,10 +69,18 @@ type SelectedSourceArtifact = {
   sourceDir: string;
 };
 
-function deriveDefaultSkillName(sourceGitUrl: string, skillPath?: string) {
+function deriveDefaultSkillName(
+  sourceGitUrl: string,
+  skillPath?: string,
+  sourceRepo?: HostedRepoRef
+) {
   if (skillPath) {
     const normalizedPath = skillPath.replace(/\\/g, "/").replace(/\/+$/, "");
     return path.posix.basename(normalizedPath);
+  }
+
+  if (sourceRepo) {
+    return sourceRepo.repo;
   }
 
   const normalizedSource = sourceGitUrl
@@ -82,7 +90,7 @@ function deriveDefaultSkillName(sourceGitUrl: string, skillPath?: string) {
   return path.posix.basename(normalizedSource);
 }
 
-function buildGitHubLookup(repo: GitHubRepoRef, sourcePath: string): GitHubSkillLookup {
+function buildHostedLookup(repo: HostedRepoRef, sourcePath: string): HostedSkillLookup {
   return {
     ...repo,
     skillFilePath: buildSkillFilePath(sourcePath),
@@ -93,6 +101,7 @@ function resolveSelectedArtifactName(
   selectedArtifact: SelectedSourceArtifact,
   sourceGitUrl: string,
   skillPath: string | undefined,
+  sourceRepo: HostedRepoRef | undefined,
   explicitName?: string
 ) {
   if (selectedArtifact.kind !== "skill") {
@@ -100,7 +109,8 @@ function resolveSelectedArtifactName(
     return selectedArtifact.name;
   }
 
-  const derivedName = explicitName ?? deriveDefaultSkillName(sourceGitUrl, skillPath);
+  const derivedName =
+    explicitName ?? deriveDefaultSkillName(sourceGitUrl, skillPath, sourceRepo);
   try {
     validateArtifactName(derivedName);
     return derivedName;
@@ -167,10 +177,10 @@ async function selectSourceArtifact(
   };
 }
 
-async function resolveLocalGitHubLookup(
+async function resolveLocalHostedLookup(
   localSourceRoot: string,
   sourcePath: string
-): Promise<GitHubSkillLookup | null> {
+): Promise<HostedSkillLookup | null> {
   const gitRoot = await getGitRoot(localSourceRoot).catch(() => null);
   if (!gitRoot) {
     return null;
@@ -181,7 +191,7 @@ async function resolveLocalGitHubLookup(
     return null;
   }
 
-  const parsedRepo = parseGitHubRepoUrl(remoteUrl);
+  const parsedRepo = parseHostedRepoUrl(remoteUrl);
   if (!parsedRepo) {
     return null;
   }
@@ -194,7 +204,7 @@ async function resolveLocalGitHubLookup(
     (await toGitRelativePath(gitRoot, selectedSourceRoot)) || "."
   );
 
-  return buildGitHubLookup(parsedRepo, repoRelativeSourcePath);
+  return buildHostedLookup(parsedRepo, repoRelativeSourcePath);
 }
 
 async function resolveWorkingTreeArtifact(
@@ -223,20 +233,21 @@ async function resolveWorkingTreeArtifact(
   const sourceRef = await getCurrentBranch(localSourceRoot);
   const sourceCommit = await getHeadCommit(localSourceRoot);
   const sourcePath = options.path ?? ".";
+  const directRepo =
+    parseHostedRepoUrl(options.sourceGitUrl) ?? parseHostedRepoUrl(storedSourceUrl);
   const name = resolveSelectedArtifactName(
     selectedArtifact,
     options.sourceGitUrl,
     options.path,
+    directRepo ?? undefined,
     options.name
   );
 
-  const directRepo =
-    parseGitHubRepoUrl(options.sourceGitUrl) ?? parseGitHubRepoUrl(storedSourceUrl);
-  const githubLookup =
+  const hostedLookup =
     selectedArtifact.kind !== "skill"
       ? null
-      : (directRepo ? buildGitHubLookup(directRepo, sourcePath) : null) ??
-        (await resolveLocalGitHubLookup(localSourceRoot, sourcePath));
+      : (directRepo ? buildHostedLookup(directRepo, sourcePath) : null) ??
+        (await resolveLocalHostedLookup(localSourceRoot, sourcePath));
 
   return {
     kind: selectedArtifact.kind,
@@ -246,7 +257,7 @@ async function resolveWorkingTreeArtifact(
     sourceRef,
     sourceCommit,
     storedSourceUrl,
-    githubLookup,
+    hostedLookup,
     cleanup: async () => {
       await fs.rm(tempRoot, { recursive: true, force: true });
     },
@@ -258,11 +269,16 @@ export async function resolveSourceArtifact(
 ): Promise<ResolvedSourceArtifact> {
   const cwd = options.cwd ?? process.cwd();
   const storedSourceUrl = normalizeStoredSourceUrl(options.sourceGitUrl, cwd);
-  const parsedGitHubTreeUrl = parseGitHubTreeUrl(options.sourceGitUrl);
-  const cloneSourceUrl = parsedGitHubTreeUrl?.repoUrl ?? storedSourceUrl;
+  const parsedHostedSourceViewUrl = parseHostedSourceViewUrl(options.sourceGitUrl);
+  const cloneSourceUrl = parsedHostedSourceViewUrl?.repoUrl ?? storedSourceUrl;
   const localSourceRoot = isAbsoluteLocalSourcePath(storedSourceUrl) ? storedSourceUrl : null;
 
-  if (options.useWorkingTreeIfLocal && localSourceRoot && !options.ref && !parsedGitHubTreeUrl) {
+  if (
+    options.useWorkingTreeIfLocal &&
+    localSourceRoot &&
+    !options.ref &&
+    !parsedHostedSourceViewUrl
+  ) {
     return resolveWorkingTreeArtifact(localSourceRoot, options, storedSourceUrl);
   }
 
@@ -275,14 +291,14 @@ export async function resolveSourceArtifact(
 
     let inferredRef = options.ref?.trim();
     let inferredPath = options.path;
-    if (parsedGitHubTreeUrl && (!inferredRef || !inferredPath)) {
-      const resolved = await splitGitHubTreeRefAndPath(
-        parsedGitHubTreeUrl.refAndPathSegments,
+    if (parsedHostedSourceViewUrl && (!inferredRef || !inferredPath)) {
+      const resolved = await splitHostedRefAndPath(
+        parsedHostedSourceViewUrl.refAndPathSegments,
         (candidate) => gitRefExists(cloneDir, candidate)
       );
       if (!resolved) {
         throw new Error(
-          `Unable to resolve GitHub tree URL ref/path: ${options.sourceGitUrl}`
+          `Unable to resolve hosted source URL ref/path: ${options.sourceGitUrl}`
         );
       }
       inferredRef ??= resolved.ref;
@@ -329,17 +345,27 @@ export async function resolveSourceArtifact(
       selectedArtifact,
       options.sourceGitUrl,
       inferredPath,
+      parsedHostedSourceViewUrl
+        ? {
+            forge: parsedHostedSourceViewUrl.forge,
+            owner: parsedHostedSourceViewUrl.owner,
+            repo: parsedHostedSourceViewUrl.repo,
+            repoFullName: parsedHostedSourceViewUrl.repoFullName,
+          }
+        : parseHostedRepoUrl(options.sourceGitUrl) ??
+          parseHostedRepoUrl(storedSourceUrl) ??
+          undefined,
       options.name
     );
 
     const directRepo =
-      parseGitHubRepoUrl(options.sourceGitUrl) ?? parseGitHubRepoUrl(storedSourceUrl);
-    const githubLookup =
+      parseHostedRepoUrl(options.sourceGitUrl) ?? parseHostedRepoUrl(storedSourceUrl);
+    const hostedLookup =
       selectedArtifact.kind !== "skill"
         ? null
-        : (directRepo ? buildGitHubLookup(directRepo, sourcePath) : null) ??
+        : (directRepo ? buildHostedLookup(directRepo, sourcePath) : null) ??
           (localSourceRoot
-            ? await resolveLocalGitHubLookup(localSourceRoot, sourcePath)
+            ? await resolveLocalHostedLookup(localSourceRoot, sourcePath)
             : null);
 
     return {
@@ -351,7 +377,7 @@ export async function resolveSourceArtifact(
       sourceCommit,
       storedSourceUrl,
       selectedTag,
-      githubLookup,
+      hostedLookup,
       cleanup: async () => {
         await fs.rm(tempRoot, { recursive: true, force: true });
       },

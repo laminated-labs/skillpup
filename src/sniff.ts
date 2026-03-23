@@ -16,7 +16,7 @@ import {
   listRegistryArtifacts,
   resolveRequestedKind,
 } from "./registry-artifacts.js";
-import { resolveSourceArtifact, type GitHubSkillLookup } from "./source-artifact.js";
+import { resolveSourceArtifact, type HostedSkillLookup } from "./source-artifact.js";
 import {
   createTegoClient,
   normalizeAssessmentPayload,
@@ -32,7 +32,7 @@ import {
   LOCKFILE_BASENAME,
   parseArtifactSpecifier,
 } from "./utils.js";
-import { parseGitHubRepoUrl, parseGitHubTreeUrl } from "./source-spec.js";
+import { parseHostedRepoUrl, parseHostedSourceViewUrl } from "./source-spec.js";
 
 export type SniffStatus =
   | "matched"
@@ -146,7 +146,7 @@ async function buildMatchedAssessment(args: {
   skillName: string;
   sourceRef: string;
   sourceCommit: string;
-  lookup: GitHubSkillLookup;
+  lookup: HostedSkillLookup;
   tego: ReturnType<typeof createTegoClient>;
 }): Promise<MatchedAssessment | null> {
   const candidates = await args.tego.searchSkillsByOwner(args.lookup.owner);
@@ -216,7 +216,7 @@ function buildUnsupportedSourceEntry(
 
 function buildNotIndexedEntry(
   targetLabel: string,
-  lookup: GitHubSkillLookup
+  lookup: HostedSkillLookup
 ): SniffEntry {
   return {
     status: "not-indexed",
@@ -257,7 +257,7 @@ async function sniffSourceArtifact(
       ];
     }
 
-    if (!resolvedSource.githubLookup) {
+    if (!resolvedSource.hostedLookup) {
       return [
         buildUnsupportedSourceEntry(
           targetLabel,
@@ -271,36 +271,36 @@ async function sniffSourceArtifact(
       skillName: resolvedSource.name,
       sourceRef: resolvedSource.sourceRef,
       sourceCommit: resolvedSource.sourceCommit,
-      lookup: resolvedSource.githubLookup,
+      lookup: resolvedSource.hostedLookup,
       tego,
     });
 
-    return [matchedAssessment?.entry ?? buildNotIndexedEntry(targetLabel, resolvedSource.githubLookup)];
+    return [matchedAssessment?.entry ?? buildNotIndexedEntry(targetLabel, resolvedSource.hostedLookup)];
   } finally {
     await resolvedSource.cleanup();
   }
 }
 
-function buildRegistryLookup(metadata: ArtifactVersionMetadata): GitHubSkillLookup | null {
-  const parsedRepo = parseGitHubRepoUrl(metadata.sourceUrl);
+function buildRegistryLookup(metadata: ArtifactVersionMetadata): HostedSkillLookup | null {
+  const parsedRepo = parseHostedRepoUrl(metadata.sourceUrl);
   if (!parsedRepo) {
     return null;
   }
 
-  const parsedTreeUrl = parseGitHubTreeUrl(metadata.sourceUrl);
+  const parsedSourceViewUrl = parseHostedSourceViewUrl(metadata.sourceUrl);
   const sourceRefSegments = metadata.sourceRef.split("/").filter(Boolean);
   let sourcePath = metadata.sourcePath;
-  if (parsedTreeUrl) {
+  if (parsedSourceViewUrl) {
     let refPrefixMatched = false;
     let matchedTreePath = "";
     if (
       sourceRefSegments.length > 0 &&
       sourceRefSegments.every(
-        (segment, index) => parsedTreeUrl.refAndPathSegments[index] === segment
+        (segment, index) => parsedSourceViewUrl.refAndPathSegments[index] === segment
       )
     ) {
       refPrefixMatched = true;
-      const remainingSegments = parsedTreeUrl.refAndPathSegments.slice(
+      const remainingSegments = parsedSourceViewUrl.refAndPathSegments.slice(
         sourceRefSegments.length
       );
       if (remainingSegments.length > 0) {
@@ -313,9 +313,9 @@ function buildRegistryLookup(metadata: ArtifactVersionMetadata): GitHubSkillLook
     } else if (
       !refPrefixMatched &&
       sourcePath === "." &&
-      parsedTreeUrl.refAndPathSegments.length > 1
+      parsedSourceViewUrl.refAndPathSegments.length > 1
     ) {
-      sourcePath = parsedTreeUrl.refAndPathSegments.slice(1).join("/");
+      sourcePath = parsedSourceViewUrl.refAndPathSegments.slice(1).join("/");
     }
   }
 
