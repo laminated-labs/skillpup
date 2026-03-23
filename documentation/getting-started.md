@@ -58,7 +58,7 @@ already in the URL:
 ```bash
 skillpup bury \
   https://bitbucket.org/example/team-skills/src/main/skills/reviewer \
-  --registry git@bitbucket.org:example/skill-registry.git \
+  --registry ../skill-registry \
   --commit
 ```
 

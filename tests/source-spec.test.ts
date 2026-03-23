@@ -3,6 +3,7 @@ import {
   normalizeStoredSourceUrl,
   parseHostedRepoUrl,
   parseHostedSourceViewUrl,
+  resolveHostedRepoUrls,
   splitHostedRefAndPath,
 } from "../src/source-spec.js";
 
@@ -210,5 +211,23 @@ describe("normalizeStoredSourceUrl", () => {
         "/tmp"
       )
     ).toBe("https://bitbucket.org/openai/skills/src/main/skills/reviewer");
+  });
+});
+
+describe("resolveHostedRepoUrls", () => {
+  it("returns fallback clone URLs for plain Bitbucket Cloud clone URLs", () => {
+    expect(resolveHostedRepoUrls("git@bitbucket.org:openai/skills.git")).toEqual([
+      "git@bitbucket.org:openai/skills.git",
+      "https://bitbucket.org/openai/skills.git",
+    ]);
+  });
+
+  it("returns clone URL variants for Bitbucket Cloud source-view URLs", () => {
+    expect(
+      resolveHostedRepoUrls("https://bitbucket.org/openai/skills/src/main/skills/reviewer")
+    ).toEqual([
+      "https://bitbucket.org/openai/skills.git",
+      "git@bitbucket.org:openai/skills.git",
+    ]);
   });
 });

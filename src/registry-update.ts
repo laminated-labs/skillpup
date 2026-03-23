@@ -23,6 +23,7 @@ import {
   isAbsoluteLocalSourcePath,
   isScpLikeGitUrl,
   isWindowsAbsolutePath,
+  resolveHostedRepoUrls,
   parseHostedSourceViewUrl,
 } from "./source-spec.js";
 import {
@@ -166,6 +167,11 @@ async function resolveSourceLookupTargets(
   const parsedHostedSourceViewUrl = parseHostedSourceViewUrl(sourceUrl);
   if (parsedHostedSourceViewUrl) {
     return parsedHostedSourceViewUrl.repoUrls;
+  }
+
+  const hostedRepoUrls = resolveHostedRepoUrls(sourceUrl);
+  if (hostedRepoUrls) {
+    return hostedRepoUrls;
   }
 
   let parsedUrl: URL | null = null;

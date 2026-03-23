@@ -107,6 +107,10 @@ function buildHostedCloneUrls(
   return [buildHostedCloneUrl(forge, owner, repo), buildHostedSshCloneUrl(forge, owner, repo)];
 }
 
+function uniqueStrings(values: string[]) {
+  return [...new Set(values.filter(Boolean))];
+}
+
 export function parseHostedSourceViewUrl(source: string): ParsedHostedSourceViewUrl | null {
   let parsedUrl: URL;
   try {
@@ -190,6 +194,23 @@ export function parseHostedRepoUrl(source: string): HostedRepoRef | null {
   }
 
   return buildHostedRepoRef(forgeConfig.forge, owner, repo);
+}
+
+export function resolveHostedRepoUrls(source: string): string[] | null {
+  const parsedSourceViewUrl = parseHostedSourceViewUrl(source);
+  if (parsedSourceViewUrl) {
+    return parsedSourceViewUrl.repoUrls;
+  }
+
+  const parsedRepo = parseHostedRepoUrl(source);
+  if (!parsedRepo) {
+    return null;
+  }
+
+  return uniqueStrings([
+    source,
+    ...buildHostedCloneUrls(parsedRepo.forge, parsedRepo.owner, parsedRepo.repo),
+  ]);
 }
 
 export async function splitHostedRefAndPath(

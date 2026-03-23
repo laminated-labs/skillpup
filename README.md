@@ -88,8 +88,8 @@ After the initial fetch, future syncs can rely on the saved config:
 skillpup fetch
 ```
 
-Registry URLs can be local paths or hosted git remotes such as
-`git@bitbucket.org:workspace/skill-registry.git`.
+For read-side flows such as `fetch` and `update`, registry URLs can be local paths or hosted git
+remotes such as `git@bitbucket.org:workspace/skill-registry.git`.
 
 To check whether the project is pinned behind newer registry versions without changing files:
 

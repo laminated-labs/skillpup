@@ -237,7 +237,8 @@ Behavior:
 - if no semver-like tag exists, the source branch or commit is used
 - if `--version` is omitted, the selected tag or commit becomes the stored version
 - `source-git-url` may be a local path, a hosted clone URL, a GitHub tree URL, or a Bitbucket Cloud source-view URL
-- Bitbucket Cloud registry remotes work anywhere `--registry <path-or-git-url>` is accepted, for example `git@bitbucket.org:workspace/skill-registry.git`
+- write-side `--registry` values for `bury`, `bury refresh`, and `bury update` must still point at a local registry checkout
+- Bitbucket Cloud registry remotes work for read-side commands such as `fetch`, `update`, and `sniff --registry`
 - subagents are stored in the registry as canonical one-file bundles and install into `.codex/agents/<name>.toml`
 
 ### `skillpup bury refresh <target-folder>`
