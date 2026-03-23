@@ -1,18 +1,25 @@
 import fs from "node:fs/promises";
 import path from "node:path";
-import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { createSkillRepo, makeTempDir, runGit } from "./helpers.js";
 
 const cloneState = vi.hoisted(() => ({
   sourceRepoDir: "",
+  attemptedRepoUrls: [] as string[],
+  rejectRepoUrls: [] as string[],
 }));
 
 vi.mock("../src/git.js", async () => {
   const actual = await vi.importActual<typeof import("../src/git.js")>("../src/git.js");
   return {
     ...actual,
-    cloneRepo: async (_repoUrl: string, destination: string) =>
-      actual.cloneRepo(cloneState.sourceRepoDir, destination),
+    cloneRepo: async (repoUrl: string, destination: string) => {
+      cloneState.attemptedRepoUrls.push(repoUrl);
+      if (cloneState.rejectRepoUrls.includes(repoUrl)) {
+        throw new Error(`Simulated clone failure for ${repoUrl}`);
+      }
+      return actual.cloneRepo(cloneState.sourceRepoDir, destination);
+    },
   };
 });
 
@@ -23,6 +30,11 @@ describe("resolveSourceArtifact", () => {
 
   beforeAll(async () => {
     rootDir = await makeTempDir("skillpup-source-artifact-");
+  });
+
+  afterEach(() => {
+    cloneState.attemptedRepoUrls = [];
+    cloneState.rejectRepoUrls = [];
   });
 
   afterAll(async () => {
@@ -80,6 +92,31 @@ describe("resolveSourceArtifact", () => {
         repoFullName: "openai/Skills",
         skillFilePath: "skills/reviewer/SKILL.md",
       });
+    } finally {
+      await resolved.cleanup();
+    }
+  });
+
+  it("falls back to an SSH clone target for Bitbucket source-view URLs", async () => {
+    const source = await createSkillRepo({
+      skillName: "reviewer",
+      skillPath: "skills/reviewer",
+      versions: ["v1.0.0"],
+    });
+    cloneState.sourceRepoDir = source.repoDir;
+    cloneState.rejectRepoUrls = ["https://bitbucket.org/openai/Skills.git"];
+
+    const resolved = await resolveSourceArtifact({
+      sourceGitUrl: "https://bitbucket.org/openai/Skills/src/main/skills/reviewer",
+      cwd: path.dirname(source.repoDir),
+    });
+
+    try {
+      expect(resolved.name).toBe("reviewer");
+      expect(cloneState.attemptedRepoUrls).toEqual([
+        "https://bitbucket.org/openai/Skills.git",
+        "git@bitbucket.org:openai/Skills.git",
+      ]);
     } finally {
       await resolved.cleanup();
     }

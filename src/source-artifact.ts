@@ -69,6 +69,27 @@ type SelectedSourceArtifact = {
   sourceDir: string;
 };
 
+async function cloneRepoWithFallback(
+  repoUrls: string[],
+  destination: string,
+  tempRoot: string
+) {
+  const uniqueRepoUrls = [...new Set(repoUrls.filter(Boolean))];
+  let lastError: unknown;
+
+  for (const repoUrl of uniqueRepoUrls) {
+    try {
+      await ensureEmptyDir(tempRoot);
+      await cloneRepo(repoUrl, destination);
+      return;
+    } catch (error) {
+      lastError = error;
+    }
+  }
+
+  throw lastError ?? new Error("Unable to clone source repository.");
+}
+
 function deriveDefaultSkillName(
   sourceGitUrl: string,
   skillPath?: string,
@@ -270,7 +291,7 @@ export async function resolveSourceArtifact(
   const cwd = options.cwd ?? process.cwd();
   const storedSourceUrl = normalizeStoredSourceUrl(options.sourceGitUrl, cwd);
   const parsedHostedSourceViewUrl = parseHostedSourceViewUrl(options.sourceGitUrl);
-  const cloneSourceUrl = parsedHostedSourceViewUrl?.repoUrl ?? storedSourceUrl;
+  const cloneSourceUrls = parsedHostedSourceViewUrl?.repoUrls ?? [storedSourceUrl];
   const localSourceRoot = isAbsoluteLocalSourcePath(storedSourceUrl) ? storedSourceUrl : null;
 
   if (
@@ -286,8 +307,7 @@ export async function resolveSourceArtifact(
   const cloneDir = path.join(tempRoot, "source");
 
   try {
-    await ensureEmptyDir(tempRoot);
-    await cloneRepo(cloneSourceUrl, cloneDir);
+    await cloneRepoWithFallback(cloneSourceUrls, cloneDir, tempRoot);
 
     let inferredRef = options.ref?.trim();
     let inferredPath = options.path;
