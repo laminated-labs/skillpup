@@ -25,6 +25,7 @@
 - Update `README.md` when CLI behavior, configuration semantics, or contributor workflow changes.
 - Prefer integration coverage for end-to-end CLI behavior. Use focused config or generate tests for parsing and prompt behavior.
 - Keep digests, lockfiles, and registry metadata aligned with the installed artifact behavior.
+- If committing on behalf of the user, never commit without GPG signing.
 
 ## Local Context
 
