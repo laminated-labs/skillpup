@@ -88,6 +88,9 @@ After the initial fetch, future syncs can rely on the saved config:
 skillpup fetch
 ```
 
+Registry URLs can be local paths or hosted git remotes such as
+`git@bitbucket.org:workspace/skill-registry.git`.
+
 To check whether the project is pinned behind newer registry versions without changing files:
 
 ```bash
@@ -106,6 +109,9 @@ To look up an existing assessment from the [Tego Skills Security Index](https://
 export TEGO_API_KEY=tsk_...
 skillpup sniff ../reviewer-skill
 ```
+
+Bitbucket Cloud-backed skills can be buried, updated, and fetched normally, but `sniff`
+currently reports `unsupported-source` because Tego matching is GitHub-oriented.
 
 To sniff every configured skill in a consumer repository:
 

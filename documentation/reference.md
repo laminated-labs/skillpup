@@ -133,8 +133,9 @@ Source mode:
 
 - run `skillpup sniff <source-git-url-or-local-path>` to inspect a source repository before burying it
 - source mode mirrors `skillpup bury` path and ref resolution, but it never publishes anything
-- local source mode requires the repo to have a GitHub `origin` remote so `skillpup` can map the selected `SKILL.md` to the Tego index
-- if the source cannot be mapped to a GitHub repository and skill path, `sniff` reports `unsupported-source`
+- local source mode requires the repo to have a GitHub or Bitbucket Cloud `origin` remote so `skillpup` can resolve the selected `SKILL.md` back to hosted source metadata
+- if the source cannot be mapped to hosted source metadata, `sniff` reports `unsupported-source`
+- Bitbucket Cloud-backed sources also report `unsupported-source` after resolution because Tego matching currently requires GitHub-backed source metadata
 
 Registry mode:
 
@@ -142,7 +143,8 @@ Registry mode:
 - selectors accept `name`, `skill:name`, `name@version`, or `skill:name@version`
 - `skillpup sniff --registry ../skill-registry` scans the latest buried version of every skill in the registry
 - subagents are outside Tego's current scope; explicit `subagent:...` selectors report `unsupported-kind`, and registry-wide scans ignore subagents
-- buried skills whose recorded `sourceUrl` is not a GitHub repository URL report `unsupported-source`
+- buried skills whose recorded `sourceUrl` is not a GitHub or Bitbucket Cloud repository URL report `unsupported-source`
+- buried Bitbucket Cloud-backed skills also report `unsupported-source` because Tego matching currently requires GitHub-backed source metadata
 
 Behavior:
 
@@ -234,6 +236,8 @@ Behavior:
 - if `--ref` is omitted, the highest semver-like tag is preferred
 - if no semver-like tag exists, the source branch or commit is used
 - if `--version` is omitted, the selected tag or commit becomes the stored version
+- `source-git-url` may be a local path, a hosted clone URL, a GitHub tree URL, or a Bitbucket Cloud source-view URL
+- Bitbucket Cloud registry remotes work anywhere `--registry <path-or-git-url>` is accepted, for example `git@bitbucket.org:workspace/skill-registry.git`
 - subagents are stored in the registry as canonical one-file bundles and install into `.codex/agents/<name>.toml`
 
 ### `skillpup bury refresh <target-folder>`

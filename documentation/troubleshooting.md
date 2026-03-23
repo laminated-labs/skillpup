@@ -32,6 +32,14 @@ If the same name exists as both a skill and a subagent, use `skill:<name>` or `s
 
 `fetch` searches parent directories for `skillpup` config files, so you can run it from subdirectories inside a consumer repository as long as the config exists higher up the tree. Relative `registry.url` values from that config are resolved from the config file directory.
 
+## `unsupported-source` From `skillpup sniff`
+
+`skillpup sniff` can only match Tego assessments for GitHub-backed source metadata today.
+
+- GitHub-backed local sources, buried metadata, and lockfile entries can match Tego
+- Bitbucket Cloud-backed sources resolve cleanly, but still report `unsupported-source`
+- non-hosted local repos or repos without a supported `origin` remote also report `unsupported-source`
+
 ## `Installed digest mismatch`
 
 The bundled files in the registry no longer match the digest recorded in `metadata.yaml`.
