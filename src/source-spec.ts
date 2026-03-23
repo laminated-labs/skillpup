@@ -8,6 +8,7 @@ export type ParsedHostedSourceViewUrl = {
   repo: string;
   repoFullName: string;
   repoUrl: string;
+  repoUrls: string[];
   refAndPathSegments: string[];
 };
 
@@ -89,6 +90,23 @@ function buildHostedCloneUrl(
   return `https://${config.hostname}/${owner}/${repo}.git`;
 }
 
+function buildHostedSshCloneUrl(
+  forge: HostedGitForge,
+  owner: string,
+  repo: string
+) {
+  const config = hostedForgeConfigs.find((entry) => entry.forge === forge)!;
+  return `git@${config.hostname}:${owner}/${repo}.git`;
+}
+
+function buildHostedCloneUrls(
+  forge: HostedGitForge,
+  owner: string,
+  repo: string
+) {
+  return [buildHostedCloneUrl(forge, owner, repo), buildHostedSshCloneUrl(forge, owner, repo)];
+}
+
 export function parseHostedSourceViewUrl(source: string): ParsedHostedSourceViewUrl | null {
   let parsedUrl: URL;
   try {
@@ -113,9 +131,11 @@ export function parseHostedSourceViewUrl(source: string): ParsedHostedSourceView
 
   const [owner, repoName] = segments;
   const normalizedRepoName = repoName.replace(/\.git$/, "");
+  const repoUrls = buildHostedCloneUrls(forgeConfig.forge, owner, normalizedRepoName);
   return {
     ...buildHostedRepoRef(forgeConfig.forge, owner, normalizedRepoName),
-    repoUrl: buildHostedCloneUrl(forgeConfig.forge, owner, normalizedRepoName),
+    repoUrl: repoUrls[0]!,
+    repoUrls,
     refAndPathSegments: segments.slice(3),
   };
 }
@@ -157,7 +177,7 @@ export function parseHostedRepoUrl(source: string): HostedRepoRef | null {
     return null;
   }
 
-  if (parsedUrl.protocol !== "https:" && parsedUrl.protocol !== "ssh:") {
+  if (!parsedUrl.protocol) {
     return null;
   }
 

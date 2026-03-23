@@ -18,6 +18,10 @@ describe("parseHostedSourceViewUrl", () => {
       repo: "skills",
       repoFullName: "openai/skills",
       repoUrl: "https://github.com/openai/skills.git",
+      repoUrls: [
+        "https://github.com/openai/skills.git",
+        "git@github.com:openai/skills.git",
+      ],
       refAndPathSegments: ["main", "skills", ".curated", "figma"],
     });
   });
@@ -29,6 +33,10 @@ describe("parseHostedSourceViewUrl", () => {
       repo: "skills",
       repoFullName: "openai/skills",
       repoUrl: "https://github.com/openai/skills.git",
+      repoUrls: [
+        "https://github.com/openai/skills.git",
+        "git@github.com:openai/skills.git",
+      ],
       refAndPathSegments: ["main"],
     });
   });
@@ -44,6 +52,10 @@ describe("parseHostedSourceViewUrl", () => {
       repo: "skills",
       repoFullName: "openai/skills",
       repoUrl: "https://bitbucket.org/openai/skills.git",
+      repoUrls: [
+        "https://bitbucket.org/openai/skills.git",
+        "git@bitbucket.org:openai/skills.git",
+      ],
       refAndPathSegments: ["main", "skills", ".curated", "figma"],
     });
   });
@@ -59,6 +71,10 @@ describe("parseHostedSourceViewUrl", () => {
       repo: "skills",
       repoFullName: "openai/skills",
       repoUrl: "https://bitbucket.org/openai/skills.git",
+      repoUrls: [
+        "https://bitbucket.org/openai/skills.git",
+        "git@bitbucket.org:openai/skills.git",
+      ],
       refAndPathSegments: ["feature/dog-mode", "skills", "fetcher"],
     });
   });
@@ -114,6 +130,21 @@ describe("parseHostedRepoUrl", () => {
 
   it("parses GitHub ssh:// repository URLs", () => {
     expect(parseHostedRepoUrl("ssh://git@github.com/openai/skills.git")).toEqual({
+      forge: "github",
+      owner: "openai",
+      repo: "skills",
+      repoFullName: "openai/skills",
+    });
+  });
+
+  it("parses GitHub git:// and git+https:// repository URLs", () => {
+    expect(parseHostedRepoUrl("git://github.com/openai/skills.git")).toEqual({
+      forge: "github",
+      owner: "openai",
+      repo: "skills",
+      repoFullName: "openai/skills",
+    });
+    expect(parseHostedRepoUrl("git+https://github.com/openai/skills.git")).toEqual({
       forge: "github",
       owner: "openai",
       repo: "skills",
